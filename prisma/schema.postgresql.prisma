@@ -1,0 +1,72 @@
+// קובץ זה לשימוש בענן (Netlify / Firebase)
+// העתיקו את התוכן ל-schema.prisma לפני העלאה, או החליפו את שורת provider
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Household {
+  id           String         @id @default(uuid())
+  familyName   String
+  address      String
+  codeHash     String
+  isAdmin      Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  products     Product[]
+  shoppingList ShoppingItem[]
+  activityLogs ActivityLog[]
+  members      FamilyMember[]
+}
+
+model FamilyMember {
+  id          String    @id @default(uuid())
+  name        String
+  isHead      Boolean   @default(false)
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([householdId, name])
+}
+
+model Product {
+  id          String         @id @default(uuid())
+  name        String
+  quantity    Int            @default(0)
+  imageUrl    String?
+  isMissing   Boolean        @default(false)
+  householdId String
+  household   Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  shopping    ShoppingItem[]
+}
+
+model ShoppingItem {
+  id          String    @id @default(uuid())
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name        String
+  quantity    Int       @default(1)
+  isChecked   Boolean   @default(false)
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  addedBy     String
+  createdAt   DateTime  @default(now())
+}
+
+model ActivityLog {
+  id          String    @id @default(uuid())
+  action      String
+  details     String?
+  actorName   String
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  productName String?
+  createdAt   DateTime  @default(now())
+}

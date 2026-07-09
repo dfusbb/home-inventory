@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ניהול מלאי הבית</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #dbeafe, #f8fafc);
+      }
+      .loader { text-align: center; }
+      .icon { font-size: 64px; margin-bottom: 16px; }
+      p { color: #64748b; font-size: 18px; }
+      .spinner {
+        width: 36px; height: 36px;
+        border: 3px solid #e2e8f0;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 20px auto 0;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div class="loader">
+      <div class="icon">🏠</div>
+      <p>טוען את האפליקציה...</p>
+      <div class="spinner"></div>
+    </div>
+  </body>
+</html>

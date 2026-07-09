@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ניהול מלאי הבית</string>
+    <string name="title_activity_main">ניהול מלאי הבית</string>
+    <string name="package_name">com.homeinventory.app</string>
+    <string name="custom_url_scheme">com.homeinventory.app</string>
+</resources>
