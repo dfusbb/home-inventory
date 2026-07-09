@@ -12,7 +12,7 @@ export async function getHouseholdCategoryNames(householdId: string): Promise<st
     select: { name: true },
   });
 
-  const merged = [...DEFAULT_CATEGORIES];
+  const merged: string[] = [...DEFAULT_CATEGORIES];
   for (const { name } of custom) {
     if (!merged.includes(name)) merged.push(name);
   }

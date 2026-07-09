@@ -1,7 +1,18 @@
 import { prisma } from "@/lib/prisma";
-import { getActorMemberId, getActorName } from "@/lib/auth";
+import { getActorMemberId, getActorName, type SessionPayload } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { requireAuth } from "./api-auth";
+
+type VerifiedActorSuccess = {
+  session: SessionPayload;
+  actorName: string;
+  isHead: boolean;
+  member: { id: string; name: string; isHead: boolean } | null;
+};
+
+type VerifiedActorResult =
+  | { error: NextResponse }
+  | VerifiedActorSuccess;
 
 export async function getVerifiedActor(householdId: string) {
   const memberId = await getActorMemberId();
@@ -22,9 +33,9 @@ export async function getVerifiedActor(householdId: string) {
   return member;
 }
 
-export async function requireVerifiedActor() {
+export async function requireVerifiedActor(): Promise<VerifiedActorResult> {
   const result = await requireAuth();
-  if ("error" in result) return result;
+  if ("error" in result && result.error) return { error: result.error };
 
   if (result.session.isAdmin) {
     const actorName = await getActorName();
