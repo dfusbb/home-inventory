@@ -67,3 +67,14 @@ export async function requireVerifiedActor(): Promise<VerifiedActorResult> {
     member,
   };
 }
+
+export function headOnlyError() {
+  return NextResponse.json(
+    { error: "רק ראש המשפחה יכול לבצע פעולה זו" },
+    { status: 403 }
+  );
+}
+
+export function normalizeActorName(name: string) {
+  return name.trim().replace(/\s+/g, " ");
+}

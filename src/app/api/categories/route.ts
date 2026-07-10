@@ -1,4 +1,4 @@
-import { requireVerifiedActor } from "@/lib/actor";
+import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
 import {
   addHouseholdCategory,
   getHouseholdCategoryNames,
@@ -16,6 +16,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const result = await requireVerifiedActor();
   if ("error" in result) return result.error;
+  if (!result.isHead) return headOnlyError();
 
   const { name } = await request.json();
   const outcome = await addHouseholdCategory(result.session.householdId, name);

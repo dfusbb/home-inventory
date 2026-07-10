@@ -8,6 +8,7 @@ import type { Product } from "@/components/InventoryColumn";
 interface ProductEditModalProps {
   product: Product;
   categories: string[];
+  isHead: boolean;
   onClose: () => void;
   onUpdate: (product: Product) => void;
   onDelete: (id: string) => void;
@@ -17,6 +18,7 @@ interface ProductEditModalProps {
 export default function ProductEditModal({
   product,
   categories,
+  isHead,
   onClose,
   onUpdate,
   onDelete,
@@ -45,12 +47,21 @@ export default function ProductEditModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
-      const data = await res.json();
+      let data: { error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        setError("שגיאה בשמירה");
+        return;
+      }
       if (res.ok) {
-        onUpdate(data);
+        onUpdate(data as Product);
+        onClose();
       } else {
         setError(data.error || "שגיאה בשמירה");
       }
+    } catch {
+      setError("שגיאת רשת. נסו שוב.");
     } finally {
       setLoading(false);
     }
@@ -80,11 +91,23 @@ export default function ProductEditModal({
   }
 
   function handleSave() {
+    if (!isHead) {
+      save({ quantity });
+      return;
+    }
+
+    const parsedPrice =
+      unitPrice.trim() === "" ? null : Number(unitPrice.replace(",", "."));
+    if (parsedPrice !== null && (Number.isNaN(parsedPrice) || parsedPrice < 0)) {
+      setError("מחיר ליחידה לא תקין");
+      return;
+    }
+
     save({
       name,
       quantity,
       category,
-      unitPrice: unitPrice.trim() === "" ? null : Number(unitPrice),
+      unitPrice: parsedPrice,
     });
   }
 
@@ -97,6 +120,7 @@ export default function ProductEditModal({
 
   async function uploadProcessedImage(blob: Blob) {
     setUploading(true);
+    setError("");
     try {
       const ext = blob.type === "image/png" ? "png" : "jpg";
       const formData = new FormData();
@@ -105,11 +129,23 @@ export default function ProductEditModal({
         method: "POST",
         body: formData,
       });
-      if (res.ok) {
-        const updated = await res.json();
-        onUpdate(updated);
-        setPendingImage(null);
+      let data: { error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("שגיאה בהעלאת התמונה");
       }
+      if (res.ok) {
+        onUpdate(data as Product);
+        setPendingImage(null);
+      } else {
+        throw new Error(data.error || "שגיאה בהעלאת התמונה");
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "שגיאה בהעלאת התמונה";
+      setError(message);
+      throw err;
     } finally {
       setUploading(false);
     }
@@ -137,7 +173,9 @@ export default function ProductEditModal({
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4">
         <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-md p-6 animate-slide-up max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold">עריכת מוצר</h2>
+            <h2 className="text-lg font-bold">
+              {isHead ? "עריכת מוצר" : "עדכון מלאי"}
+            </h2>
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
@@ -165,14 +203,22 @@ export default function ProductEditModal({
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium text-slate-600">שם מוצר</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
+              {isHead ? (
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              ) : (
+                <p className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border bg-slate-50 text-slate-800 font-medium">
+                  {product.name}
+                </p>
+              )}
             </div>
 
+            {isHead && (
+              <>
             <div>
               <label className="text-sm font-medium text-slate-600">קטגוריה</label>
               <select
@@ -238,6 +284,8 @@ export default function ProductEditModal({
                 className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
+              </>
+            )}
 
             <div>
               <label className="text-sm font-medium text-slate-600">כמות במלאי</label>
@@ -264,6 +312,8 @@ export default function ProductEditModal({
               </div>
             </div>
 
+            {isHead && (
+              <>
             <label className="flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-border cursor-pointer hover:border-primary hover:bg-blue-50 transition">
               <span className="text-sm text-muted">
                 {uploading ? "מעלה תמונה..." : "📷 צלם או בחר תמונה"}
@@ -280,6 +330,8 @@ export default function ProductEditModal({
             <p className="text-xs text-center text-muted -mt-2">
               אפשר לחתוך שוליים ולהסיר רקע כהה לפני השמירה
             </p>
+              </>
+            )}
 
             {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
@@ -300,12 +352,14 @@ export default function ProductEditModal({
               </button>
             </div>
 
+            {isHead && (
             <button
               onClick={handleDelete}
               className="w-full py-2.5 rounded-xl text-red-500 text-sm hover:bg-red-50"
             >
               מחק מוצר
             </button>
+            )}
           </div>
         </div>
       </div>

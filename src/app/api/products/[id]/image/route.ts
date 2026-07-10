@@ -1,9 +1,8 @@
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import { v4 as uuidv4 } from "uuid";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { requireVerifiedActor } from "@/lib/actor";
+import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 export async function POST(
   request: Request,
@@ -11,6 +10,7 @@ export async function POST(
 ) {
   const result = await requireVerifiedActor();
   if ("error" in result) return result.error;
+  if (!result.isHead) return headOnlyError();
 
   const { actorName, session } = result;
   const { id } = await params;
@@ -31,16 +31,16 @@ export async function POST(
   }
 
   const bytes = await file.arrayBuffer();
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    return Response.json(
+      { error: "התמונה גדולה מדי. נסו שוב אחרי חיתוך." },
+      { status: 400 }
+    );
+  }
+
   const buffer = Buffer.from(bytes);
-
-  const ext = file.name.split(".").pop() || "jpg";
-  const filename = `${uuidv4()}.${ext}`;
-  const uploadDir = path.join(process.cwd(), "public", "uploads");
-
-  await mkdir(uploadDir, { recursive: true });
-  await writeFile(path.join(uploadDir, filename), buffer);
-
-  const imageUrl = `/uploads/${filename}`;
+  const mime = file.type?.startsWith("image/") ? file.type : "image/jpeg";
+  const imageUrl = `data:${mime};base64,${buffer.toString("base64")}`;
 
   const product = await prisma.product.update({
     where: { id },

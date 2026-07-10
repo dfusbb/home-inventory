@@ -16,6 +16,7 @@ export interface Product {
 interface InventoryColumnProps {
   products: Product[];
   categories: string[];
+  isHead: boolean;
   onProductsChange: (products: Product[]) => void;
   onEdit: (product: Product) => void;
   onManageCategories: () => void;
@@ -29,6 +30,7 @@ function formatPrice(price: number | null): string {
 export default function InventoryColumn({
   products,
   categories,
+  isHead,
   onProductsChange,
   onEdit,
   onManageCategories,
@@ -158,13 +160,15 @@ export default function InventoryColumn({
             </h2>
             <p className="text-xs text-muted mt-0.5">{products.length} מוצרים</p>
           </div>
-          <button
-            onClick={onManageCategories}
-            className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 transition"
-            title="ניהול קטגוריות"
-          >
-            🏷️ קטגוריות
-          </button>
+          {isHead && (
+            <button
+              onClick={onManageCategories}
+              className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 transition"
+              title="ניהול קטגוריות"
+            >
+              🏷️ קטגוריות
+            </button>
+          )}
         </div>
       </div>
 
@@ -173,7 +177,9 @@ export default function InventoryColumn({
           <div className="text-center py-12 text-muted">
             <div className="text-4xl mb-2">🛒</div>
             <p className="text-sm">אין מוצרים עדיין</p>
-            <p className="text-xs mt-1">לחצו + להוספת מוצר</p>
+            <p className="text-xs mt-1">
+              {isHead ? "לחצו + להוספת מוצר" : "פנו לראש המשפחה להוספת מוצרים"}
+            </p>
           </div>
         )}
 
@@ -189,50 +195,52 @@ export default function InventoryColumn({
         ))}
       </div>
 
-      <div className="p-3 border-t border-border">
-        {showAdd ? (
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => {
-                  setNewName(e.target.value);
-                  setAddError("");
-                }}
-                placeholder="שם המוצר החדש"
-                className="flex-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm"
-                autoFocus
-                onKeyDown={(e) => e.key === "Enter" && addProduct()}
-              />
-              <button
-                onClick={addProduct}
-                disabled={adding}
-                className="px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold disabled:opacity-60"
-              >
-                {adding ? "..." : "הוסף"}
-              </button>
-              <button
-                onClick={() => {
-                  setShowAdd(false);
-                  setAddError("");
-                }}
-                className="px-3 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-sm"
-              >
-                ✕
-              </button>
+      {isHead && (
+        <div className="p-3 border-t border-border">
+          {showAdd ? (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => {
+                    setNewName(e.target.value);
+                    setAddError("");
+                  }}
+                  placeholder="שם המוצר החדש"
+                  className="flex-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm"
+                  autoFocus
+                  onKeyDown={(e) => e.key === "Enter" && addProduct()}
+                />
+                <button
+                  onClick={addProduct}
+                  disabled={adding}
+                  className="px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold disabled:opacity-60"
+                >
+                  {adding ? "..." : "הוסף"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAdd(false);
+                    setAddError("");
+                  }}
+                  className="px-3 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+              {addError && <p className="text-xs text-red-500 px-1">{addError}</p>}
             </div>
-            {addError && <p className="text-xs text-red-500 px-1">{addError}</p>}
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowAdd(true)}
-            className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-[var(--primary-hover)] transition flex items-center justify-center gap-2 shadow-md shadow-blue-200/50"
-          >
-            <span className="text-lg">+</span> הוסף מוצר חדש
-          </button>
-        )}
-      </div>
+          ) : (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-[var(--primary-hover)] transition flex items-center justify-center gap-2 shadow-md shadow-blue-200/50"
+            >
+              <span className="text-lg">+</span> הוסף מוצר חדש
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

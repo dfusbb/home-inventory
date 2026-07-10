@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { requireVerifiedActor } from "@/lib/actor";
+import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
 import { normalizeProductName } from "@/lib/categories";
 import { isValidHouseholdCategory } from "@/lib/categories-server";
 
@@ -11,9 +11,20 @@ export async function PATCH(
   const result = await requireVerifiedActor();
   if ("error" in result) return result.error;
 
-  const { actorName, session } = result;
+  const { actorName, session, isHead } = result;
   const { id } = await params;
   const body = await request.json();
+
+  if (!isHead) {
+    const allowedKeys = ["quantity", "isMissing"];
+    const attempted = Object.keys(body).filter((k) => body[k] !== undefined);
+    if (attempted.some((k) => !allowedKeys.includes(k))) {
+      return Response.json(
+        { error: "אין הרשאה לערוך שדות אלה – רק ראש המשפחה" },
+        { status: 403 }
+      );
+    }
+  }
 
   const existing = await prisma.product.findFirst({
     where: { id, householdId: session.householdId },
@@ -59,10 +70,12 @@ export async function PATCH(
     if (valid) data.category = body.category;
   }
   if (body.unitPrice !== undefined) {
-    data.unitPrice =
+    const parsed =
       body.unitPrice === null || body.unitPrice === ""
         ? null
-        : Math.max(0, Number(body.unitPrice));
+        : Number(body.unitPrice);
+    data.unitPrice =
+      parsed === null || Number.isNaN(parsed) ? null : Math.max(0, parsed);
   }
 
   const product = await prisma.product.update({
@@ -128,6 +141,7 @@ export async function DELETE(
 ) {
   const result = await requireVerifiedActor();
   if ("error" in result) return result.error;
+  if (!result.isHead) return headOnlyError();
 
   const { actorName, session } = result;
   const { id } = await params;

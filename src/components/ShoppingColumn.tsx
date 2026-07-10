@@ -45,6 +45,8 @@ export default function ShoppingColumn({
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
   const [search, setSearch] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [pickQuantity, setPickQuantity] = useState(1);
 
   const activeItems = items.filter((i) => !i.isChecked);
   const boughtItems = items.filter((i) => i.isChecked);
@@ -66,25 +68,45 @@ export default function ShoppingColumn({
 
   const pickerGroups = groupByCategory(availableProducts, categories);
 
-  async function addFromInventory(productId: string) {
+  async function addFromInventory(productId: string, quantity: number) {
     setAdding(true);
     setAddError("");
     try {
       const res = await fetch("/api/shopping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
+        body: JSON.stringify({ productId, quantity }),
       });
       const data = await res.json();
       if (res.ok) {
         onItemsChange([data, ...items]);
         setShowPicker(false);
         setSearch("");
+        setSelectedProduct(null);
+        setPickQuantity(1);
       } else {
         setAddError(data.error || "שגיאה בהוספה");
       }
     } finally {
       setAdding(false);
+    }
+  }
+
+  function selectProduct(product: Product) {
+    setSelectedProduct(product);
+    setPickQuantity(1);
+    setAddError("");
+  }
+
+  async function updateQuantity(id: string, quantity: number) {
+    const res = await fetch(`/api/shopping/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantity }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      onItemsChange(items.map((i) => (i.id === id ? updated : i)));
     }
   }
 
@@ -122,6 +144,8 @@ export default function ShoppingColumn({
                   setShowPicker(false);
                   setSearch("");
                   setAddError("");
+                  setSelectedProduct(null);
+                  setPickQuantity(1);
                 }}
                 className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
               >
@@ -141,7 +165,58 @@ export default function ShoppingColumn({
             </div>
 
             <div className="flex-1 overflow-y-auto p-3">
-              {products.length === 0 ? (
+              {selectedProduct ? (
+                <div className="flex flex-col items-center py-6 px-4">
+                  {selectedProduct.imageUrl ? (
+                    <img
+                      src={selectedProduct.imageUrl}
+                      alt={selectedProduct.name}
+                      className="w-20 h-20 rounded-xl object-contain border border-border mb-4"
+                    />
+                  ) : (
+                    <span className="text-5xl mb-4">📦</span>
+                  )}
+                  <p className="font-bold text-lg text-slate-800 text-center mb-1">
+                    {selectedProduct.name}
+                  </p>
+                  {selectedProduct.unitPrice != null && (
+                    <p className="text-sm text-muted mb-6">
+                      {formatPrice(selectedProduct.unitPrice)} ליחידה
+                    </p>
+                  )}
+                  <p className="text-sm font-medium text-slate-600 mb-3">כמה לקנות?</p>
+                  <div className="flex items-center gap-4 mb-6">
+                    <button
+                      onClick={() => setPickQuantity(Math.max(1, pickQuantity - 1))}
+                      className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-xl"
+                    >
+                      −
+                    </button>
+                    <span className="w-12 text-center font-bold text-2xl">{pickQuantity}</span>
+                    <button
+                      onClick={() => setPickQuantity(pickQuantity + 1)}
+                      className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-xl"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <div className="flex gap-2 w-full">
+                    <button
+                      onClick={() => setSelectedProduct(null)}
+                      className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-medium"
+                    >
+                      חזור
+                    </button>
+                    <button
+                      onClick={() => addFromInventory(selectedProduct.id, pickQuantity)}
+                      disabled={adding}
+                      className="flex-1 py-3 rounded-xl bg-orange-500 text-white font-semibold disabled:opacity-60"
+                    >
+                      {adding ? "..." : "הוסף לרשימה"}
+                    </button>
+                  </div>
+                </div>
+              ) : products.length === 0 ? (
                 <div className="text-center py-10 text-muted text-sm">
                   <p>אין מוצרים במלאי</p>
                   <p className="text-xs mt-1">הוסיפו מוצרים בעמודת המלאי קודם</p>
@@ -162,7 +237,7 @@ export default function ShoppingColumn({
                       {group.items.map((product) => (
                         <button
                           key={product.id}
-                          onClick={() => addFromInventory(product.id)}
+                          onClick={() => selectProduct(product)}
                           disabled={adding}
                           className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-white hover:bg-orange-50 hover:border-orange-200 transition text-right disabled:opacity-60"
                         >
@@ -244,9 +319,23 @@ export default function ShoppingColumn({
                   {formatPrice(item.product.unitPrice)}
                 </span>
               )}
-              <span className="text-sm font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg">
-                ×{item.quantity}
-              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
+                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
+                >
+                  −
+                </button>
+                <span className="w-7 text-center text-sm font-semibold text-slate-600">
+                  {item.quantity}
+                </span>
+                <button
+                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
+                >
+                  +
+                </button>
+              </div>
               <button
                 onClick={() => removeItem(item.id)}
                 className="text-slate-400 hover:text-red-500 text-sm"

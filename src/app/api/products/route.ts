@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { requireVerifiedActor } from "@/lib/actor";
+import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
 import {
   guessCategory,
   normalizeProductName,
@@ -27,6 +27,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const result = await requireVerifiedActor();
   if ("error" in result) return result.error;
+  if (!result.isHead) return headOnlyError();
 
   const { name, quantity = 0, category, unitPrice } = await request.json();
   if (!name?.trim()) {

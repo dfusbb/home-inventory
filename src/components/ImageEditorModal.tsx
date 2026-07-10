@@ -6,7 +6,7 @@ import {
   canvasToBlob,
   processCanvas,
 } from "@/lib/image-processing";
-import { getCroppedImg } from "@/lib/crop-utils";
+import { createImage, getCroppedImg } from "@/lib/crop-utils";
 
 interface ImageEditorModalProps {
   file: File;
@@ -29,6 +29,7 @@ export default function ImageEditorModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
@@ -80,10 +81,17 @@ export default function ImageEditorModal({
   }, [previewUrl]);
 
   async function handleSave() {
-    if (!imageSrc || !croppedAreaPixels) return;
+    if (!imageSrc) return;
     setSaving(true);
+    setSaveError("");
     try {
-      let canvas = await getCroppedImg(imageSrc, croppedAreaPixels);
+      let pixels = croppedAreaPixels;
+      if (!pixels) {
+        const img = await createImage(imageSrc);
+        pixels = { x: 0, y: 0, width: img.width, height: img.height };
+      }
+
+      let canvas = await getCroppedImg(imageSrc, pixels);
       canvas = processCanvas(canvas, {
         removeDarkBackground: removeBackground,
         darkThreshold,
@@ -96,6 +104,8 @@ export default function ImageEditorModal({
         0.92
       );
       await onSave(blob);
+    } catch {
+      setSaveError("שגיאה בשמירת התמונה. נסו שוב.");
     } finally {
       setSaving(false);
     }
@@ -124,6 +134,7 @@ export default function ImageEditorModal({
               onCropChange={setCrop}
               onZoomChange={setZoom}
               onCropComplete={onCropComplete}
+              onCropAreaChange={(_, pixels) => setCroppedAreaPixels(pixels)}
               objectFit="contain"
             />
           )}
@@ -208,6 +219,10 @@ export default function ImageEditorModal({
           </div>
         </div>
 
+        {saveError && (
+          <p className="px-4 pb-2 text-sm text-red-500 text-center">{saveError}</p>
+        )}
+
         <div className="p-4 border-t border-border flex gap-2 shrink-0">
           <button
             onClick={onClose}
@@ -217,7 +232,7 @@ export default function ImageEditorModal({
           </button>
           <button
             onClick={handleSave}
-            disabled={saving || processing || !croppedAreaPixels}
+            disabled={saving || processing || !imageSrc}
             className="flex-1 py-3 rounded-xl bg-primary text-white font-semibold disabled:opacity-60"
           >
             {saving ? "שומר..." : "שמור תמונה"}

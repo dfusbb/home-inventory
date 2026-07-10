@@ -164,6 +164,7 @@ export default function DashboardPage() {
         <ProductEditModal
           product={editingProduct}
           categories={categories}
+          isHead={isHead}
           onClose={() => setEditingProduct(null)}
           onUpdate={(updated) => {
             setProducts((prev) =>
@@ -191,7 +192,12 @@ export default function DashboardPage() {
             <div>
               <h1 className="font-bold text-slate-800">משפחת {familyName}</h1>
               {actorName && (
-                <p className="text-xs text-muted">מחובר/ת: {actorName}</p>
+                <p className="text-xs text-muted">
+                  מחובר/ת: {actorName}
+                  {isHead && (
+                    <span className="mr-1 text-indigo-600"> · ראש משפחה</span>
+                  )}
+                </p>
               )}
             </div>
           </div>
@@ -251,7 +257,7 @@ export default function DashboardPage() {
       <main className="max-w-7xl mx-auto p-4 h-[calc(100vh-64px)] md:h-[calc(100vh-72px)]">
         {!actorName ? (
           <div className="flex items-center justify-center h-full text-muted text-sm">
-            בחרו בן משפחה רשום כדי להמשיך
+            הקלידו שם רשום כדי להמשיך
           </div>
         ) : (
           <>
@@ -259,6 +265,7 @@ export default function DashboardPage() {
           <InventoryColumn
             products={products}
             categories={categories}
+            isHead={isHead}
             onProductsChange={setProducts}
             onEdit={setEditingProduct}
             onManageCategories={() => setShowCategories(true)}
@@ -281,6 +288,7 @@ export default function DashboardPage() {
             <InventoryColumn
               products={products}
               categories={categories}
+              isHead={isHead}
               onProductsChange={setProducts}
               onEdit={setEditingProduct}
               onManageCategories={() => setShowCategories(true)}
