@@ -3,7 +3,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // לפני בניית APK: הגדירו את כתובת האתר בענן
 // לדוגמה: set CAPACITOR_SERVER_URL=https://your-app.netlify.app
 const serverUrl =
-  process.env.CAPACITOR_SERVER_URL || "http://10.0.2.2:3000";
+  process.env.CAPACITOR_SERVER_URL || "https://dfusbb-home-inventory.netlify.app";
 
 const config: CapacitorConfig = {
   appId: "com.homeinventory.app",
