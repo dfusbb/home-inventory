@@ -37,6 +37,7 @@ export default function ProductEditModal({
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [addingCategory, setAddingCategory] = useState(false);
+  const [isMissing, setIsMissing] = useState(product.isMissing);
 
   async function save(updates: Partial<Product>) {
     setLoading(true);
@@ -56,6 +57,9 @@ export default function ProductEditModal({
       }
       if (res.ok) {
         onUpdate(data as Product);
+        if (updates.isMissing !== undefined) {
+          setIsMissing((data as Product).isMissing);
+        }
         onClose();
       } else {
         setError(data.error || "שגיאה בשמירה");
@@ -333,6 +337,12 @@ export default function ProductEditModal({
               </>
             )}
 
+            {(isMissing || product.isMissing) && (
+              <p className="text-sm text-orange-600 text-center font-medium">
+                מסומן כחסר במלאי
+              </p>
+            )}
+
             {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
             <div className="flex gap-2 pt-2">
@@ -343,13 +353,23 @@ export default function ProductEditModal({
               >
                 {loading ? "שומר..." : "שמור"}
               </button>
-              <button
-                onClick={() => save({ isMissing: true })}
-                disabled={loading}
-                className="px-4 py-3 rounded-xl bg-orange-50 text-orange-600 font-medium hover:bg-orange-100 border border-orange-200"
-              >
-                חסר!
-              </button>
+              {isMissing ? (
+                <button
+                  onClick={() => save({ isMissing: false })}
+                  disabled={loading}
+                  className="px-4 py-3 rounded-xl bg-green-50 text-green-700 font-medium hover:bg-green-100 border border-green-200"
+                >
+                  יש במלאי
+                </button>
+              ) : (
+                <button
+                  onClick={() => save({ isMissing: true })}
+                  disabled={loading}
+                  className="px-4 py-3 rounded-xl bg-orange-50 text-orange-600 font-medium hover:bg-orange-100 border border-orange-200"
+                >
+                  חסר!
+                </button>
+              )}
             </div>
 
             {isHead && (

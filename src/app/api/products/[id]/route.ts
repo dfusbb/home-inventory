@@ -94,6 +94,10 @@ export async function PATCH(
     action = "סימון כחסר";
     details = `כמות נוכחית: ${product.quantity}`;
   }
+  if (body.isMissing === false && existing.isMissing) {
+    action = "ביטול סימון חסר";
+    details = `כמות נוכחית: ${product.quantity}`;
+  }
   if (body.imageUrl !== undefined && body.imageUrl !== existing.imageUrl) {
     action = "עדכון תמונה";
   }
@@ -130,6 +134,18 @@ export async function PATCH(
         },
       });
     }
+  } else if (
+    body.isMissing === false &&
+    existing.isMissing &&
+    product.quantity > 0
+  ) {
+    await prisma.shoppingItem.deleteMany({
+      where: {
+        householdId: session.householdId,
+        productId: product.id,
+        isChecked: false,
+      },
+    });
   }
 
   return Response.json(product);

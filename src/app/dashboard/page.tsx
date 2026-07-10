@@ -174,6 +174,11 @@ export default function DashboardPage() {
               )
             );
             setEditingProduct(updated);
+            if (!updated.isMissing) {
+              setShoppingItems((prev) =>
+                prev.filter((i) => i.productId !== updated.id || i.isChecked)
+              );
+            }
           }}
           onDelete={(id) => {
             setProducts((prev) => prev.filter((p) => p.id !== id));
