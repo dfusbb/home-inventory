@@ -42,8 +42,25 @@ async function setupHebrewPdfFont(doc: import("jspdf").jsPDF) {
   const base64 = await loadHebrewFontBase64();
   doc.addFileToVFS(HEBREW_FONT_FILE, base64);
   doc.addFont(HEBREW_FONT_FILE, HEBREW_FONT_NAME, "normal");
-  doc.setFont(HEBREW_FONT_NAME);
+  // autotable defaults header cells to bold — map bold to same Hebrew font
+  doc.addFont(HEBREW_FONT_FILE, HEBREW_FONT_NAME, "bold");
+  doc.setFont(HEBREW_FONT_NAME, "normal");
 }
+
+const tableStyles = {
+  font: HEBREW_FONT_NAME,
+  fontStyle: "normal" as const,
+  fontSize: 11,
+  halign: "right" as const,
+};
+
+const tableHeadStyles = {
+  fillColor: [37, 99, 235] as [number, number, number],
+  textColor: [255, 255, 255] as [number, number, number],
+  halign: "center" as const,
+  font: HEBREW_FONT_NAME,
+  fontStyle: "normal" as const,
+};
 
 export async function generateShoppingPDF({
   familyName,
@@ -89,21 +106,13 @@ export async function generateShoppingPDF({
 
     autoTable(doc, {
       startY,
-      head: [["#", "מוצר", "כמות", "✓"]],
+      head: [["#", "מוצר", "כמות", "V"]],
       body: group.items.map((item) => {
         rowNum += 1;
-        return [String(rowNum), item.name, String(item.quantity), "☐"];
+        return [String(rowNum), item.name, String(item.quantity), "[ ]"];
       }),
-      styles: {
-        font: HEBREW_FONT_NAME,
-        fontSize: 11,
-        halign: "right",
-      },
-      headStyles: {
-        fillColor: [37, 99, 235],
-        halign: "center",
-        font: HEBREW_FONT_NAME,
-      },
+      styles: tableStyles,
+      headStyles: tableHeadStyles,
       columnStyles: {
         0: { halign: "center", cellWidth: 15 },
         2: { halign: "center", cellWidth: 25 },
