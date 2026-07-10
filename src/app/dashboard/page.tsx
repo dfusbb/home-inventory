@@ -274,12 +274,17 @@ export default function DashboardPage() {
             items={shoppingItems}
             products={products}
             categories={categories}
+            isHead={isHead}
             onItemsChange={setShoppingItems}
+            onManageCategories={() => setShowCategories(true)}
           />
           <TripColumn
             items={shoppingItems}
+            categories={categories}
             familyName={familyName}
             actorName={actorName || ""}
+            isHead={isHead}
+            onManageCategories={() => setShowCategories(true)}
           />
         </div>
 
@@ -299,14 +304,19 @@ export default function DashboardPage() {
               items={shoppingItems}
               products={products}
               categories={categories}
+              isHead={isHead}
               onItemsChange={setShoppingItems}
+              onManageCategories={() => setShowCategories(true)}
             />
           )}
           {mobileTab === "trip" && (
             <TripColumn
               items={shoppingItems}
+              categories={categories}
               familyName={familyName}
               actorName={actorName || ""}
+              isHead={isHead}
+              onManageCategories={() => setShowCategories(true)}
             />
           )}
         </div>

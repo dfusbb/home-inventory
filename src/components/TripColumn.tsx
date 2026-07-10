@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { groupByCategory } from "@/lib/categories";
 import { generateShoppingPDF } from "@/lib/pdf";
 
 interface ShoppingItem {
@@ -8,19 +9,38 @@ interface ShoppingItem {
   name: string;
   quantity: number;
   isChecked: boolean;
+  product?: { category: string } | null;
 }
 
 interface TripColumnProps {
   items: ShoppingItem[];
+  categories: string[];
   familyName: string;
   actorName: string;
+  isHead: boolean;
+  onManageCategories: () => void;
 }
 
-export default function TripColumn({ items, familyName, actorName }: TripColumnProps) {
+export default function TripColumn({
+  items,
+  categories,
+  familyName,
+  actorName,
+  isHead,
+  onManageCategories,
+}: TripColumnProps) {
   const [shopperName, setShopperName] = useState(actorName);
   const [downloading, setDownloading] = useState(false);
 
   const activeItems = items.filter((i) => !i.isChecked);
+
+  const activeGroups = useMemo(() => {
+    const withCategory = activeItems.map((item) => ({
+      ...item,
+      category: item.product?.category ?? "אחר",
+    }));
+    return groupByCategory(withCategory, categories);
+  }, [activeItems, categories]);
 
   async function downloadPDF() {
     if (activeItems.length === 0) {
@@ -33,7 +53,12 @@ export default function TripColumn({ items, familyName, actorName }: TripColumnP
       await generateShoppingPDF({
         familyName,
         shopperName: shopperName || "לא צוין",
-        items: activeItems,
+        items: activeItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          category: item.product?.category ?? "אחר",
+        })),
+        categories,
         date: new Date(),
       });
     } finally {
@@ -44,10 +69,23 @@ export default function TripColumn({ items, familyName, actorName }: TripColumnP
   return (
     <div className="flex flex-col h-full bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-border bg-gradient-to-l from-green-50 to-white">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          <span>🚗</span> יוצאים לקניות
-        </h2>
-        <p className="text-xs text-muted mt-0.5">הורידו רשימה להדפסה</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <span>🚗</span> יוצאים לקניות
+            </h2>
+            <p className="text-xs text-muted mt-0.5">הורידו רשימה להדפסה</p>
+          </div>
+          {isHead && (
+            <button
+              onClick={onManageCategories}
+              className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 transition"
+              title="ניהול קטגוריות"
+            >
+              🏷️ קטגוריות
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
@@ -69,15 +107,22 @@ export default function TripColumn({ items, familyName, actorName }: TripColumnP
           {activeItems.length === 0 ? (
             <p className="text-sm text-muted text-center py-4">אין פריטים לקנייה</p>
           ) : (
-            <ul className="space-y-2">
-              {activeItems.map((item, i) => (
-                <li key={item.id} className="flex items-center gap-2 text-sm">
-                  <span className="w-5 h-5 rounded border border-slate-300 shrink-0" />
-                  <span className="flex-1">{item.name}</span>
-                  <span className="text-muted font-medium">×{item.quantity}</span>
-                </li>
+            <div className="space-y-3">
+              {activeGroups.map((group) => (
+                <div key={group.category}>
+                  <p className="text-xs font-bold text-primary mb-1.5">{group.category}</p>
+                  <ul className="space-y-2">
+                    {group.items.map((item) => (
+                      <li key={item.id} className="flex items-center gap-2 text-sm">
+                        <span className="w-5 h-5 rounded border border-slate-300 shrink-0" />
+                        <span className="flex-1">{item.name}</span>
+                        <span className="text-muted font-medium">×{item.quantity}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
 

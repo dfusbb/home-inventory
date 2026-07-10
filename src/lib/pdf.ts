@@ -1,12 +1,16 @@
+import { groupByCategory } from "@/lib/categories";
+
 interface ShoppingPDFItem {
   name: string;
   quantity: number;
+  category: string;
 }
 
 interface ShoppingPDFOptions {
   familyName: string;
   shopperName: string;
   items: ShoppingPDFItem[];
+  categories: string[];
   date: Date;
 }
 
@@ -45,6 +49,7 @@ export async function generateShoppingPDF({
   familyName,
   shopperName,
   items,
+  categories,
   date,
 }: ShoppingPDFOptions) {
   const { jsPDF } = await import("jspdf");
@@ -70,32 +75,46 @@ export async function generateShoppingPDF({
   doc.text(`קונה: ${shopperName}`, 105, 40, { align: "center" });
   doc.text(dateStr, 105, 48, { align: "center" });
 
-  autoTable(doc, {
-    startY: 58,
-    head: [["#", "מוצר", "כמות", "✓"]],
-    body: items.map((item, i) => [
-      String(i + 1),
-      item.name,
-      String(item.quantity),
-      "☐",
-    ]),
-    styles: {
-      font: HEBREW_FONT_NAME,
-      fontSize: 11,
-      halign: "right",
-    },
-    headStyles: {
-      fillColor: [37, 99, 235],
-      halign: "center",
-      font: HEBREW_FONT_NAME,
-    },
-    columnStyles: {
-      0: { halign: "center", cellWidth: 15 },
-      2: { halign: "center", cellWidth: 25 },
-      3: { halign: "center", cellWidth: 20 },
-    },
-    margin: { right: 14, left: 14 },
-  });
+  const grouped = groupByCategory(items, categories);
+  let startY = 58;
+  let rowNum = 0;
+
+  for (const group of grouped) {
+    doc.setFont(HEBREW_FONT_NAME);
+    doc.setFontSize(12);
+    doc.setTextColor(37, 99, 235);
+    doc.text(group.category, 196, startY, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    startY += 6;
+
+    autoTable(doc, {
+      startY,
+      head: [["#", "מוצר", "כמות", "✓"]],
+      body: group.items.map((item) => {
+        rowNum += 1;
+        return [String(rowNum), item.name, String(item.quantity), "☐"];
+      }),
+      styles: {
+        font: HEBREW_FONT_NAME,
+        fontSize: 11,
+        halign: "right",
+      },
+      headStyles: {
+        fillColor: [37, 99, 235],
+        halign: "center",
+        font: HEBREW_FONT_NAME,
+      },
+      columnStyles: {
+        0: { halign: "center", cellWidth: 15 },
+        2: { halign: "center", cellWidth: 25 },
+        3: { halign: "center", cellWidth: 20 },
+      },
+      margin: { right: 14, left: 14 },
+    });
+
+    startY = (doc as import("jspdf").jsPDF & { lastAutoTable: { finalY: number } })
+      .lastAutoTable.finalY + 10;
+  }
 
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {

@@ -27,7 +27,9 @@ interface ShoppingColumnProps {
   items: ShoppingItem[];
   products: Product[];
   categories: string[];
+  isHead: boolean;
   onItemsChange: (items: ShoppingItem[]) => void;
+  onManageCategories: () => void;
 }
 
 function formatPrice(price: number | null): string {
@@ -39,7 +41,9 @@ export default function ShoppingColumn({
   items,
   products,
   categories,
+  isHead,
   onItemsChange,
+  onManageCategories,
 }: ShoppingColumnProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -67,6 +71,14 @@ export default function ShoppingColumn({
   }, [products, activeProductIds, search]);
 
   const pickerGroups = groupByCategory(availableProducts, categories);
+
+  const activeGroups = useMemo(() => {
+    const withCategory = activeItems.map((item) => ({
+      ...item,
+      category: item.product?.category ?? "אחר",
+    }));
+    return groupByCategory(withCategory, categories);
+  }, [activeItems, categories]);
 
   async function addFromInventory(productId: string, quantity: number) {
     setAdding(true);
@@ -127,6 +139,61 @@ export default function ShoppingColumn({
     if (res.ok) {
       onItemsChange(items.filter((i) => i.id !== id));
     }
+  }
+
+  function renderItemRow(item: ShoppingItem) {
+    return (
+      <div
+        key={item.id}
+        className="flex items-center gap-3 p-3 rounded-xl border border-border bg-white"
+      >
+        <button
+          onClick={() => toggleCheck(item.id, true)}
+          className="w-6 h-6 rounded-md border-2 border-slate-300 hover:border-primary hover:bg-blue-50 shrink-0 transition"
+        />
+        {item.product?.imageUrl ? (
+          <img
+            src={item.product.imageUrl}
+            alt={item.name}
+            className="w-10 h-10 rounded-lg object-contain border border-border shrink-0"
+          />
+        ) : (
+          <span className="text-lg shrink-0">📦</span>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-slate-800">{item.name}</p>
+          <p className="text-xs text-muted">נוסף ע&quot;י {item.addedBy}</p>
+        </div>
+        {item.product?.unitPrice != null && (
+          <span className="text-xs font-semibold text-slate-500 shrink-0">
+            {formatPrice(item.product.unitPrice)}
+          </span>
+        )}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
+            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
+          >
+            −
+          </button>
+          <span className="w-7 text-center text-sm font-semibold text-slate-600">
+            {item.quantity}
+          </span>
+          <button
+            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
+          >
+            +
+          </button>
+        </div>
+        <button
+          onClick={() => removeItem(item.id)}
+          className="text-slate-400 hover:text-red-500 text-sm"
+        >
+          ✕
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -230,9 +297,11 @@ export default function ShoppingColumn({
               ) : (
                 pickerGroups.map((group) => (
                   <div key={group.category} className="mb-3">
-                    <p className="text-xs font-bold text-primary px-2 py-1">
-                      {group.category}
-                    </p>
+                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-2 py-1.5 mb-1">
+                      <p className="text-xs font-bold text-primary uppercase tracking-wide">
+                        {group.category}
+                      </p>
+                    </div>
                     <div className="space-y-1">
                       {group.items.map((product) => (
                         <button
@@ -277,13 +346,26 @@ export default function ShoppingColumn({
 
       <div className="flex flex-col h-full bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-border bg-gradient-to-l from-orange-50 to-white">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <span>🛍️</span> צריך לקנות
-          </h2>
-          <p className="text-xs text-muted mt-0.5">{activeItems.length} פריטים ברשימה</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <span>🛍️</span> צריך לקנות
+              </h2>
+              <p className="text-xs text-muted mt-0.5">{activeItems.length} פריטים ברשימה</p>
+            </div>
+            {isHead && (
+              <button
+                onClick={onManageCategories}
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 transition"
+                title="ניהול קטגוריות"
+              >
+                🏷️ קטגוריות
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
           {activeItems.length === 0 && (
             <div className="text-center py-12 text-muted">
               <div className="text-4xl mb-2">✅</div>
@@ -292,56 +374,14 @@ export default function ShoppingColumn({
             </div>
           )}
 
-          {activeItems.map((item) => (
-            <div
-              key={item.id}
-              className="flex items-center gap-3 p-3 rounded-xl border border-border bg-white"
-            >
-              <button
-                onClick={() => toggleCheck(item.id, true)}
-                className="w-6 h-6 rounded-md border-2 border-slate-300 hover:border-primary hover:bg-blue-50 shrink-0 transition"
-              />
-              {item.product?.imageUrl ? (
-                <img
-                  src={item.product.imageUrl}
-                  alt={item.name}
-                  className="w-10 h-10 rounded-lg object-contain border border-border shrink-0"
-                />
-              ) : (
-                <span className="text-lg shrink-0">📦</span>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-slate-800">{item.name}</p>
-                <p className="text-xs text-muted">נוסף ע&quot;י {item.addedBy}</p>
+          {activeGroups.map((group) => (
+            <div key={group.category}>
+              <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm px-2 py-1.5 mb-1">
+                <p className="text-xs font-bold text-primary uppercase tracking-wide">
+                  {group.category}
+                </p>
               </div>
-              {item.product?.unitPrice != null && (
-                <span className="text-xs font-semibold text-slate-500 shrink-0">
-                  {formatPrice(item.product.unitPrice)}
-                </span>
-              )}
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
-                >
-                  −
-                </button>
-                <span className="w-7 text-center text-sm font-semibold text-slate-600">
-                  {item.quantity}
-                </span>
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
-                >
-                  +
-                </button>
-              </div>
-              <button
-                onClick={() => removeItem(item.id)}
-                className="text-slate-400 hover:text-red-500 text-sm"
-              >
-                ✕
-              </button>
+              <div className="space-y-2">{group.items.map(renderItemRow)}</div>
             </div>
           ))}
 
