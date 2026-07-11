@@ -1,8 +1,10 @@
 import { groupByCategory } from "@/lib/categories";
+import { formatQuantity, normalizeQuantityUnit, priceUnitLabel, type QuantityUnit } from "@/lib/units";
 
 export interface PDFLineItem {
   name: string;
   quantity: number;
+  quantityUnit?: QuantityUnit;
   category: string;
   store?: string | null;
   unitPrice?: number | null;
@@ -29,6 +31,14 @@ let cachedFontBase64: string | null = null;
 function formatPrice(price: number | null | undefined): string {
   if (price === null || price === undefined) return "—";
   return `₪${price.toFixed(2)}`;
+}
+
+function formatPriceWithUnit(
+  price: number | null | undefined,
+  unit: QuantityUnit
+): string {
+  if (price === null || price === undefined) return "—";
+  return `${formatPrice(price)} ${priceUnitLabel(unit)}`;
 }
 
 function lineTotal(qty: number, price: number | null | undefined): string {
@@ -141,22 +151,23 @@ export async function generatePDF({
     const body = tableItems.map((item) => {
       rowNum += 1;
       const price = item.unitPrice ?? null;
+      const unit = normalizeQuantityUnit(item.quantityUnit);
       if (!showStock && price !== null) totalEstimate += item.quantity * price;
 
       if (showStock) {
         return [
           String(rowNum),
           item.name,
-          String(item.stockQuantity ?? 0),
-          formatPrice(price),
+          formatQuantity(item.stockQuantity ?? 0, unit),
+          formatPriceWithUnit(price, unit),
           item.category,
         ];
       }
       return [
         String(rowNum),
         item.name,
-        String(item.quantity),
-        formatPrice(price),
+        formatQuantity(item.quantity, unit),
+        formatPriceWithUnit(price, unit),
         lineTotal(item.quantity, price),
         item.store?.trim() || "—",
       ];

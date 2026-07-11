@@ -5,6 +5,7 @@ import { groupByCategory } from "@/lib/categories";
 import { generateShoppingPDF } from "@/lib/pdf";
 import type { ShoppingItem } from "@/components/ShoppingColumn";
 import type { Product } from "@/components/InventoryColumn";
+import { formatQuantity, normalizeQuantityUnit, priceUnitLabel, type QuantityUnit } from "@/lib/units";
 
 function formatPrice(price: number | null | undefined): string {
   if (price === null || price === undefined) return "—";
@@ -13,6 +14,10 @@ function formatPrice(price: number | null | undefined): string {
 
 function itemPrice(item: ShoppingItem): number | null {
   return item.product?.unitPrice ?? item.unitPrice ?? null;
+}
+
+function itemUnit(item: ShoppingItem): QuantityUnit {
+  return item.product?.quantityUnit ?? normalizeQuantityUnit(item.quantityUnit);
 }
 
 interface TripColumnProps {
@@ -85,6 +90,7 @@ export default function TripColumn({
         items: activeItems.map((item) => ({
           name: item.name,
           quantity: item.quantity,
+          quantityUnit: itemUnit(item),
           category: item.product?.category ?? "חד-פעמי",
           store: item.store ?? item.product?.store,
           unitPrice: itemPrice(item),
@@ -161,6 +167,7 @@ export default function TripColumn({
                   <p className="text-xs font-bold text-primary mb-1">{group.category}</p>
                   {group.items.map((item) => {
                     const price = itemPrice(item);
+                    const unit = itemUnit(item);
                     return (
                       <label
                         key={item.id}
@@ -177,8 +184,8 @@ export default function TripColumn({
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium break-words">{item.name}</p>
                           <p className="text-xs text-muted">
-                            ×{item.quantity}
-                            {price !== null && ` · ${formatPrice(price)}`}
+                            ×{formatQuantity(item.quantity, unit)}
+                            {price !== null && ` · ${formatPrice(price)} ${priceUnitLabel(unit)}`}
                             {(item.store || item.product?.store) &&
                               ` · 🏪 ${item.store || item.product?.store}`}
                           </p>

@@ -4,6 +4,8 @@ import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
 import { normalizeProductName } from "@/lib/categories";
 import { isValidHouseholdCategory } from "@/lib/categories-server";
 import { isValidHouseholdStore } from "@/lib/stores-server";
+import { normalizeQuantityUnit } from "@/lib/units";
+import { productListSelect } from "@/lib/product-select";
 
 export async function PATCH(
   request: Request,
@@ -39,8 +41,10 @@ export async function PATCH(
     name?: string;
     quantity?: number;
     imageUrl?: string | null;
+    hasImage?: boolean;
     isMissing?: boolean;
     category?: string;
+    quantityUnit?: string;
     unitPrice?: number | null;
     store?: string | null;
   } = {};
@@ -65,11 +69,17 @@ export async function PATCH(
   }
 
   if (body.quantity !== undefined) data.quantity = Math.max(0, Number(body.quantity));
-  if (body.imageUrl !== undefined) data.imageUrl = body.imageUrl;
+  if (body.imageUrl !== undefined) {
+    data.imageUrl = body.imageUrl;
+    data.hasImage = Boolean(body.imageUrl);
+  }
   if (body.isMissing !== undefined) data.isMissing = Boolean(body.isMissing);
   if (body.category !== undefined) {
     const valid = await isValidHouseholdCategory(session.householdId, body.category);
     if (valid) data.category = body.category;
+  }
+  if (body.quantityUnit !== undefined && isHead) {
+    data.quantityUnit = normalizeQuantityUnit(body.quantityUnit);
   }
   if (body.unitPrice !== undefined) {
     const parsed =
@@ -89,6 +99,7 @@ export async function PATCH(
   const product = await prisma.product.update({
     where: { id },
     data,
+    select: productListSelect,
   });
 
   let action = "עדכון מוצר";
@@ -137,6 +148,7 @@ export async function PATCH(
           productId: product.id,
           name: product.name,
           quantity: 1,
+          quantityUnit: product.quantityUnit,
           householdId: session.householdId,
           addedBy: actorName,
         },

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Product } from "@/components/InventoryColumn";
+import { formatQuantity, priceUnitLabel, quantityStep, unitLabel } from "@/lib/units";
 
 function formatPrice(price: number | null): string {
   if (price === null || price === undefined) return "—";
@@ -30,6 +31,8 @@ export default function AddToShoppingModal({
   const [store, setStore] = useState(product.store || stores[0] || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const step = quantityStep(product.quantityUnit);
+  const unit = unitLabel(product.quantityUnit);
 
   async function handleAdd() {
     setLoading(true);
@@ -65,7 +68,7 @@ export default function AddToShoppingModal({
         <h2 className="text-lg font-bold text-center mb-1">{product.name}</h2>
         {product.unitPrice != null && (
           <p className="text-sm text-muted text-center mb-3">
-            {formatPrice(product.unitPrice)} ליחידה
+            {formatPrice(product.unitPrice)} {priceUnitLabel(product.quantityUnit)}
           </p>
         )}
 
@@ -81,7 +84,7 @@ export default function AddToShoppingModal({
 
         {existingListQty !== undefined && existingListQty > 0 && (
           <p className="text-xs text-muted text-center mb-3">
-            כבר ברשימה: {existingListQty} יחידות (יתווסף לכמות)
+            כבר ברשימה: {formatQuantity(existingListQty, product.quantityUnit)} (יתווסף לכמות)
           </p>
         )}
 
@@ -90,14 +93,22 @@ export default function AddToShoppingModal({
             <label className="text-sm font-medium text-slate-600">כמות במלאי</label>
             <div className="flex items-center gap-3 mt-1">
               <button
-                onClick={() => setStockQty(Math.max(0, stockQty - 1))}
+                onClick={() => setStockQty(Math.max(0, stockQty - step))}
                 className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-lg"
               >
                 −
               </button>
-              <span className="flex-1 text-center font-bold text-xl">{stockQty}</span>
+              <input
+                type="number"
+                value={stockQty}
+                onChange={(e) => setStockQty(Math.max(0, Number(e.target.value)))}
+                className="flex-1 text-center font-bold text-xl rounded-xl border border-border py-2"
+                min={0}
+                step={step}
+                aria-label={`כמות במלאי ב${unit}`}
+              />
               <button
-                onClick={() => setStockQty(stockQty + 1)}
+                onClick={() => setStockQty(stockQty + step)}
                 className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-lg"
               >
                 +
@@ -109,20 +120,29 @@ export default function AddToShoppingModal({
             <label className="text-sm font-medium text-slate-600">כמה לקנות</label>
             <div className="flex items-center gap-3 mt-1">
               <button
-                onClick={() => setBuyQty(Math.max(1, buyQty - 1))}
+                onClick={() => setBuyQty(Math.max(step, buyQty - step))}
                 className="w-10 h-10 rounded-xl bg-orange-100 font-bold text-lg"
               >
                 −
               </button>
-              <span className="flex-1 text-center font-bold text-xl">{buyQty}</span>
+              <input
+                type="number"
+                value={buyQty}
+                onChange={(e) => setBuyQty(Math.max(step, Number(e.target.value)))}
+                className="flex-1 text-center font-bold text-xl rounded-xl border border-border py-2"
+                min={step}
+                step={step}
+                aria-label={`כמה לקנות ב${unit}`}
+              />
               <button
-                onClick={() => setBuyQty(buyQty + 1)}
+                onClick={() => setBuyQty(buyQty + step)}
                 className="w-10 h-10 rounded-xl bg-orange-100 font-bold text-lg"
               >
                 +
               </button>
             </div>
           </div>
+          <p className="text-xs text-muted text-center -mt-2">הכמות ב{unit}</p>
 
           <div>
             <label className="text-sm font-medium text-slate-600">חנות</label>

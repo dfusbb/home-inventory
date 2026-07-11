@@ -1,9 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ImageEditorModal from "@/components/ImageEditorModal";
+import ProductThumbnail from "@/components/ProductThumbnail";
 import { DEFAULT_CATEGORIES } from "@/lib/categories";
 import type { Product } from "@/components/InventoryColumn";
+import {
+  defaultUnitForCategory,
+  formatQuantity,
+  saleModeLabel,
+  priceUnitLabel,
+  quantityStep,
+  type QuantityUnit,
+  unitLabel,
+} from "@/lib/units";
 
 interface ProductEditModalProps {
   product: Product;
@@ -29,6 +39,10 @@ export default function ProductEditModal({
   const [name, setName] = useState(product.name);
   const [quantity, setQuantity] = useState(product.quantity);
   const [category, setCategory] = useState(product.category || "אחר");
+  const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>(product.quantityUnit);
+  const [unitTouched, setUnitTouched] = useState(
+    product.quantityUnit !== defaultUnitForCategory(product.category || "אחר")
+  );
   const [unitPrice, setUnitPrice] = useState(
     product.unitPrice !== null ? String(product.unitPrice) : ""
   );
@@ -41,6 +55,34 @@ export default function ProductEditModal({
   const [newCategoryName, setNewCategoryName] = useState("");
   const [addingCategory, setAddingCategory] = useState(false);
   const [isMissing, setIsMissing] = useState(product.isMissing);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(
+    product.imageUrl ?? null
+  );
+
+  useEffect(() => {
+    if (product.imageUrl) {
+      setPreviewImageUrl(product.imageUrl);
+      return;
+    }
+    if (!product.hasImage) {
+      setPreviewImageUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/products/${product.id}/image`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { imageUrl?: string | null } | null) => {
+        if (!cancelled) setPreviewImageUrl(data?.imageUrl ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewImageUrl(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product.id, product.hasImage, product.imageUrl]);
 
   async function save(updates: Partial<Product>) {
     setLoading(true);
@@ -114,6 +156,7 @@ export default function ProductEditModal({
       name,
       quantity,
       category,
+      quantityUnit,
       unitPrice: parsedPrice,
       store: store || null,
     });
@@ -144,7 +187,9 @@ export default function ProductEditModal({
         throw new Error("שגיאה בהעלאת התמונה");
       }
       if (res.ok) {
-        onUpdate(data as Product);
+        const updated = data as Product;
+        setPreviewImageUrl(URL.createObjectURL(blob));
+        onUpdate(updated);
         setPendingImage(null);
       } else {
         throw new Error(data.error || "שגיאה בהעלאת התמונה");
@@ -193,14 +238,22 @@ export default function ProductEditModal({
           </div>
 
           <div className="flex justify-center mb-5">
-            {product.imageUrl ? (
+            {previewImageUrl ? (
               <div className="w-28 h-28 rounded-xl border border-border bg-[repeating-conic-gradient(#e2e8f0_0%_25%,#f8fafc_0%_50%)] bg-[length:12px_12px] flex items-center justify-center overflow-hidden">
                 <img
-                  src={product.imageUrl}
+                  src={previewImageUrl}
                   alt={product.name}
                   className="w-full h-full object-contain"
                 />
               </div>
+            ) : product.hasImage ? (
+              <ProductThumbnail
+                productId={product.id}
+                hasImage={product.hasImage}
+                alt={product.name}
+                containerClassName="w-28 h-28 rounded-xl border border-border flex items-center justify-center overflow-hidden"
+                className="w-full h-full object-contain"
+              />
             ) : (
               <div className="w-28 h-28 rounded-xl bg-slate-100 flex items-center justify-center text-3xl">
                 📦
@@ -231,7 +284,13 @@ export default function ProductEditModal({
               <label className="text-sm font-medium text-slate-600">קטגוריה</label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => {
+                  const nextCategory = e.target.value;
+                  setCategory(nextCategory);
+                  if (!unitTouched) {
+                    setQuantityUnit(defaultUnitForCategory(nextCategory));
+                  }
+                }}
                 className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white"
               >
                 {categories.map((cat) => (
@@ -281,14 +340,35 @@ export default function ProductEditModal({
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-600">מחיר ליחידה (₪)</label>
+              <label className="text-sm font-medium text-slate-600">איך נקנה את המוצר?</label>
+              <select
+                value={quantityUnit}
+                onChange={(e) => {
+                  setUnitTouched(true);
+                  setQuantityUnit(e.target.value as QuantityUnit);
+                }}
+                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white"
+              >
+                <option value="unit">{saleModeLabel("unit")}</option>
+                <option value="kg">{saleModeLabel("kg")}</option>
+              </select>
+              <p className="text-xs text-muted mt-1">
+                פירות, ירקות ודגים מוגדרים כברירת מחדל לפי משקל. אפשר לשנות לכל מוצר — למשל
+                עגבניות שרי באריזה, או מוצר אחר שרוצים לקנות לפי ק״ג.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-600">
+                מחיר {priceUnitLabel(quantityUnit)} (₪)
+              </label>
               <input
                 type="number"
                 value={unitPrice}
                 onChange={(e) => setUnitPrice(e.target.value)}
                 min={0}
                 step={0.01}
-                placeholder="לדוגמה: 5.90"
+                placeholder={quantityUnit === "kg" ? "לדוגמה: 3.50" : "לדוגמה: 5.90"}
                 className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
@@ -310,10 +390,12 @@ export default function ProductEditModal({
             )}
 
             <div>
-              <label className="text-sm font-medium text-slate-600">כמות במלאי</label>
+              <label className="text-sm font-medium text-slate-600">
+                כמות במלאי ({unitLabel(quantityUnit)})
+              </label>
               <div className="flex items-center gap-3 mt-1">
                 <button
-                  onClick={() => setQuantity(Math.max(0, quantity - 1))}
+                  onClick={() => setQuantity(Math.max(0, quantity - quantityStep(quantityUnit)))}
                   className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-lg hover:bg-slate-200"
                 >
                   −
@@ -324,14 +406,18 @@ export default function ProductEditModal({
                   onChange={(e) => setQuantity(Math.max(0, Number(e.target.value)))}
                   className="flex-1 text-center px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-lg font-semibold"
                   min={0}
+                  step={quantityStep(quantityUnit)}
                 />
                 <button
-                  onClick={() => setQuantity(quantity + 1)}
+                  onClick={() => setQuantity(quantity + quantityStep(quantityUnit))}
                   className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-lg hover:bg-slate-200"
                 >
                   +
                 </button>
               </div>
+              <p className="text-xs text-muted mt-1">
+                יוצג כ־{formatQuantity(quantity, quantityUnit)}
+              </p>
             </div>
 
             {isHead && (

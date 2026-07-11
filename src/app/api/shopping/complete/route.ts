@@ -2,17 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
 
+import { productListSelect } from "@/lib/product-select";
+
 const shoppingInclude = {
   product: {
-    select: {
-      id: true,
-      name: true,
-      imageUrl: true,
-      unitPrice: true,
-      category: true,
-      store: true,
-      quantity: true,
-    },
+    select: productListSelect,
   },
 } as const;
 
@@ -78,7 +72,10 @@ export async function POST() {
       include: shoppingInclude,
       orderBy: [{ isChecked: "asc" }, { createdAt: "desc" }],
     }),
-    prisma.product.findMany({ where: { householdId } }),
+    prisma.product.findMany({
+      where: { householdId },
+      select: productListSelect,
+    }),
   ]);
 
   return Response.json({

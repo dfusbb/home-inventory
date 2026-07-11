@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
+import { normalizeQuantityUnit } from "@/lib/units";
+import { productListSelect } from "@/lib/product-select";
 
 export async function PATCH(
   request: Request,
@@ -26,20 +28,14 @@ export async function PATCH(
     data: {
       isChecked: body.isChecked !== undefined ? Boolean(body.isChecked) : undefined,
       inCart: body.inCart !== undefined ? Boolean(body.inCart) : undefined,
-      quantity: body.quantity !== undefined ? Math.max(1, Number(body.quantity)) : undefined,
+      quantity: body.quantity !== undefined ? Math.max(0.1, Number(body.quantity)) : undefined,
+      quantityUnit:
+        body.quantityUnit !== undefined ? normalizeQuantityUnit(body.quantityUnit) : undefined,
       store: body.store !== undefined ? (body.store || null) : undefined,
     },
     include: {
       product: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-          unitPrice: true,
-          category: true,
-          store: true,
-          quantity: true,
-        },
+        select: productListSelect,
       },
     },
   });

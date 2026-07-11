@@ -16,7 +16,8 @@ import type { ShoppingItem } from "@/components/ShoppingColumn";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [familyName, setFamilyName] = useState("");
   const [actorName, setActorName] = useState<string | null>(null);
   const [isHead, setIsHead] = useState(false);
@@ -31,6 +32,21 @@ export default function DashboardPage() {
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [stores, setStores] = useState<string[]>([]);
   const [mobileTab, setMobileTab] = useState<"inventory" | "shopping" | "trip">("inventory");
+
+  const loadDashboardData = useCallback(async () => {
+    setDataLoading(true);
+    try {
+      const res = await fetch("/api/dashboard");
+      if (!res.ok) return;
+      const data = await res.json();
+      setProducts(data.products ?? []);
+      setShoppingItems(data.shoppingItems ?? []);
+      if (data.categories) setCategories(data.categories);
+      if (data.stores) setStores(data.stores);
+    } finally {
+      setDataLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     const meRes = await fetch("/api/auth/me");
@@ -52,58 +68,23 @@ export default function DashboardPage() {
     }
 
     setFamilyName(me.familyName);
+    setAuthLoading(false);
 
     if (!me.actorValid) {
       setShowActorModal(true);
-      setLoading(false);
       return;
     }
 
     setActorName(me.actorName);
     setIsHead(me.isHead);
-
-    const [productsRes, shoppingRes, categoriesRes, storesRes] = await Promise.all([
-      fetch("/api/products"),
-      fetch("/api/shopping"),
-      fetch("/api/categories"),
-      fetch("/api/stores"),
-    ]);
-
-    if (productsRes.ok) setProducts(await productsRes.json());
-    if (shoppingRes.ok) setShoppingItems(await shoppingRes.json());
-    if (categoriesRes.ok) {
-      const data = await categoriesRes.json();
-      setCategories(data.categories);
-    }
-    if (storesRes.ok) {
-      const data = await storesRes.json();
-      setStores(data.stores);
-    }
-    setLoading(false);
-  }, [router]);
+    await loadDashboardData();
+  }, [router, loadDashboardData]);
 
   async function handleActorComplete(name: string, head?: boolean) {
     setActorName(name);
     setIsHead(!!head);
     setShowActorModal(false);
-    setLoading(true);
-    const [productsRes, shoppingRes, categoriesRes, storesRes] = await Promise.all([
-      fetch("/api/products"),
-      fetch("/api/shopping"),
-      fetch("/api/categories"),
-      fetch("/api/stores"),
-    ]);
-    if (productsRes.ok) setProducts(await productsRes.json());
-    if (shoppingRes.ok) setShoppingItems(await shoppingRes.json());
-    if (categoriesRes.ok) {
-      const data = await categoriesRes.json();
-      setCategories(data.categories);
-    }
-    if (storesRes.ok) {
-      const data = await storesRes.json();
-      setStores(data.stores);
-    }
-    setLoading(false);
+    await loadDashboardData();
   }
 
   async function switchUser() {
@@ -125,12 +106,12 @@ export default function DashboardPage() {
     router.refresh();
   }
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="text-4xl mb-3 animate-pulse">🏠</div>
-          <p className="text-muted">טוען...</p>
+          <p className="text-muted">מתחבר...</p>
         </div>
       </div>
     );
@@ -269,6 +250,13 @@ export default function DashboardPage() {
         {!actorName ? (
           <div className="flex items-center justify-center h-full text-muted text-sm">
             הקלידו שם רשום כדי להמשיך
+          </div>
+        ) : dataLoading ? (
+          <div className="flex items-center justify-center h-full text-muted text-sm">
+            <div className="text-center">
+              <div className="text-3xl mb-2 animate-pulse">📦</div>
+              טוען נתונים...
+            </div>
           </div>
         ) : (
           <>

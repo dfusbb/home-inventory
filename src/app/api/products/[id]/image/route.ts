@@ -1,8 +1,29 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
+import { productListSelect } from "@/lib/product-select";
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const result = await requireVerifiedActor();
+  if ("error" in result) return result.error;
+
+  const { id } = await params;
+  const product = await prisma.product.findFirst({
+    where: { id, householdId: result.session.householdId },
+    select: { imageUrl: true, hasImage: true },
+  });
+
+  if (!product?.hasImage || !product.imageUrl) {
+    return Response.json({ imageUrl: null });
+  }
+
+  return Response.json({ imageUrl: product.imageUrl });
+}
 
 export async function POST(
   request: Request,
@@ -44,7 +65,8 @@ export async function POST(
 
   const product = await prisma.product.update({
     where: { id },
-    data: { imageUrl },
+    data: { imageUrl, hasImage: true },
+    select: productListSelect,
   });
 
   await logActivity(

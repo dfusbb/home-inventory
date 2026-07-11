@@ -2,18 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
 import { isValidHouseholdStore } from "@/lib/stores-server";
+import { normalizeQuantityUnit } from "@/lib/units";
+import { productListSelect } from "@/lib/product-select";
 
 const shoppingInclude = {
   product: {
-    select: {
-      id: true,
-      name: true,
-      imageUrl: true,
-      unitPrice: true,
-      category: true,
-      store: true,
-      quantity: true,
-    },
+    select: productListSelect,
   },
 } as const;
 
@@ -43,9 +37,11 @@ export async function POST(request: Request) {
     store,
     isOneTime,
     updateStockQuantity,
+    quantityUnit,
   } = body;
 
-  const qty = Math.max(1, Number(quantity) || 1);
+  const qty = Math.max(0.1, Number(quantity) || 1);
+  const resolvedUnit = normalizeQuantityUnit(quantityUnit);
   const resolvedStore =
     store?.trim() || null;
 
@@ -66,6 +62,7 @@ export async function POST(request: Request) {
       data: {
         name: trimmedName,
         quantity: qty,
+        quantityUnit: resolvedUnit,
         store: resolvedStore,
         unitPrice:
           body.unitPrice !== undefined && body.unitPrice !== null && body.unitPrice !== ""
@@ -129,6 +126,7 @@ export async function POST(request: Request) {
       where: { id: existingItem.id },
       data: {
         quantity: existingItem.quantity + qty,
+        quantityUnit: product.quantityUnit,
         store: resolvedStore ?? existingItem.store,
       },
       include: shoppingInclude,
@@ -149,6 +147,7 @@ export async function POST(request: Request) {
     data: {
       name: product.name,
       quantity: qty,
+      quantityUnit: product.quantityUnit,
       store: resolvedStore ?? product.store,
       productId: product.id,
       householdId: session.householdId,

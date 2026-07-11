@@ -5,6 +5,14 @@ import { groupByCategory } from "@/lib/categories";
 import { generateShoppingPDF } from "@/lib/pdf";
 import type { Product } from "@/components/InventoryColumn";
 import AddToShoppingModal from "@/components/AddToShoppingModal";
+import ProductThumbnail from "@/components/ProductThumbnail";
+import {
+  formatQuantity,
+  normalizeQuantityUnit,
+  priceUnitLabel,
+  quantityStep,
+  type QuantityUnit,
+} from "@/lib/units";
 
 interface ShoppingProduct {
   id: string;
@@ -14,12 +22,15 @@ interface ShoppingProduct {
   category: string;
   store: string | null;
   quantity: number;
+  quantityUnit: QuantityUnit;
+  hasImage: boolean;
 }
 
 export interface ShoppingItem {
   id: string;
   name: string;
   quantity: number;
+  quantityUnit: QuantityUnit;
   unitPrice: number | null;
   store: string | null;
   isOneTime: boolean;
@@ -53,6 +64,10 @@ function itemPrice(item: ShoppingItem): number | null {
   return item.product?.unitPrice ?? item.unitPrice ?? null;
 }
 
+function itemUnit(item: ShoppingItem): QuantityUnit {
+  return item.product?.quantityUnit ?? normalizeQuantityUnit(item.quantityUnit);
+}
+
 export default function ShoppingColumn({
   items,
   products,
@@ -73,6 +88,7 @@ export default function ShoppingColumn({
   const [downloading, setDownloading] = useState(false);
   const [oneTimeName, setOneTimeName] = useState("");
   const [oneTimeQty, setOneTimeQty] = useState(1);
+  const [oneTimeUnit, setOneTimeUnit] = useState<QuantityUnit>("unit");
   const [oneTimeStore, setOneTimeStore] = useState("");
   const [oneTimePrice, setOneTimePrice] = useState("");
   const [oneTimeLoading, setOneTimeLoading] = useState(false);
@@ -121,7 +137,7 @@ export default function ShoppingColumn({
   function getWarnings(product: Product): string[] {
     const warnings: string[] = [];
     if (product.quantity > 0) {
-      warnings.push(`קיים במלאי: ${product.quantity} יחידות`);
+      warnings.push(`קיים במלאי: ${formatQuantity(product.quantity, product.quantityUnit)}`);
     }
     const recent = items.find((i) => i.productId === product.id && i.isChecked);
     if (recent) warnings.push("נרכש לאחרונה");
@@ -165,6 +181,7 @@ export default function ShoppingColumn({
           isOneTime: true,
           name: oneTimeName.trim(),
           quantity: oneTimeQty,
+          quantityUnit: oneTimeUnit,
           store: oneTimeStore || null,
           unitPrice: oneTimePrice.trim() === "" ? null : Number(oneTimePrice),
         }),
@@ -178,6 +195,7 @@ export default function ShoppingColumn({
       setShowOneTime(false);
       setOneTimeName("");
       setOneTimeQty(1);
+      setOneTimeUnit("unit");
       setOneTimeStore("");
       setOneTimePrice("");
     } finally {
@@ -214,6 +232,7 @@ export default function ShoppingColumn({
         items: activeItems.map((item) => ({
           name: item.name,
           quantity: item.quantity,
+          quantityUnit: itemUnit(item),
           category: item.product?.category ?? "חד-פעמי",
           store: item.store ?? item.product?.store,
           unitPrice: itemPrice(item),
@@ -226,16 +245,20 @@ export default function ShoppingColumn({
 
   function renderItemRow(item: ShoppingItem) {
     const price = itemPrice(item);
+    const unit = itemUnit(item);
+    const step = quantityStep(unit);
     return (
       <div
         key={item.id}
         className="flex items-start gap-3 p-3 rounded-xl border border-border bg-white"
       >
-        {item.product?.imageUrl ? (
-          <img
-            src={item.product.imageUrl}
+        {item.product?.hasImage ? (
+          <ProductThumbnail
+            productId={item.product.id}
+            hasImage={item.product.hasImage}
             alt={item.name}
-            className="w-12 h-12 rounded-lg object-contain border border-border shrink-0"
+            containerClassName="w-12 h-12 rounded-lg border border-border flex items-center justify-center overflow-hidden shrink-0"
+            className="w-full h-full object-contain"
           />
         ) : (
           <span className="text-lg shrink-0 w-12 text-center pt-1">
@@ -257,6 +280,7 @@ export default function ShoppingColumn({
           )}
           <p className="text-sm font-semibold text-slate-600 mt-1">
             {formatPrice(price)}
+            {price !== null && ` ${priceUnitLabel(unit)}`}
             {price !== null && (
               <span className="text-xs text-muted font-normal mr-1">
                 {" "}
@@ -267,14 +291,16 @@ export default function ShoppingColumn({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
+            onClick={() => updateQuantity(item.id, Math.max(step, item.quantity - step))}
             className="w-7 h-7 rounded-lg bg-slate-100 font-bold text-sm"
           >
             −
           </button>
-          <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
+          <span className="w-14 text-center text-xs font-semibold">
+            {formatQuantity(item.quantity, unit)}
+          </span>
           <button
-            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+            onClick={() => updateQuantity(item.id, item.quantity + step)}
             className="w-7 h-7 rounded-lg bg-slate-100 font-bold text-sm"
           >
             +
@@ -346,7 +372,7 @@ export default function ShoppingColumn({
                         <div className="flex-1 min-w-0">
                           <p className="font-medium break-words">{product.name}</p>
                           <p className="text-xs text-muted">
-                            במלאי: {product.quantity} · {formatPrice(product.unitPrice)}
+                            במלאי: {formatQuantity(product.quantity, product.quantityUnit)} · {formatPrice(product.unitPrice)} {product.unitPrice != null ? priceUnitLabel(product.quantityUnit) : ""}
                           </p>
                         </div>
                       </button>
@@ -374,19 +400,37 @@ export default function ShoppingColumn({
               />
               <div className="flex items-center gap-2">
                 <span className="text-sm">כמות:</span>
-                <button onClick={() => setOneTimeQty(Math.max(1, oneTimeQty - 1))} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">−</button>
-                <span className="font-bold">{oneTimeQty}</span>
-                <button onClick={() => setOneTimeQty(oneTimeQty + 1)} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">+</button>
+                <button onClick={() => setOneTimeQty(Math.max(quantityStep(oneTimeUnit), oneTimeQty - quantityStep(oneTimeUnit)))} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">−</button>
+                <input
+                  type="number"
+                  value={oneTimeQty}
+                  onChange={(e) => setOneTimeQty(Math.max(quantityStep(oneTimeUnit), Number(e.target.value)))}
+                  className="w-20 text-center px-2 py-1.5 rounded-lg border border-border font-bold"
+                  min={quantityStep(oneTimeUnit)}
+                  step={quantityStep(oneTimeUnit)}
+                />
+                <button onClick={() => setOneTimeQty(oneTimeQty + quantityStep(oneTimeUnit))} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">+</button>
               </div>
-              <input
-                type="number"
-                value={oneTimePrice}
-                onChange={(e) => setOneTimePrice(e.target.value)}
-                placeholder="מחיר (אופציונלי)"
-                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm"
-                min={0}
-                step={0.01}
-              />
+              <select
+                value={oneTimeUnit}
+                onChange={(e) => setOneTimeUnit(e.target.value as QuantityUnit)}
+                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm bg-white"
+              >
+                <option value="unit">יחידות</option>
+                <option value="kg">ק״ג</option>
+              </select>
+              <div>
+                <label className="text-xs text-muted">מחיר {priceUnitLabel(oneTimeUnit)}</label>
+                <input
+                  type="number"
+                  value={oneTimePrice}
+                  onChange={(e) => setOneTimePrice(e.target.value)}
+                  placeholder="מחיר (אופציונלי)"
+                  className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border text-sm"
+                  min={0}
+                  step={0.01}
+                />
+              </div>
               <select
                 value={oneTimeStore}
                 onChange={(e) => setOneTimeStore(e.target.value)}

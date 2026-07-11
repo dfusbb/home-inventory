@@ -9,6 +9,8 @@ import {
   getHouseholdCategoryNames,
   isValidHouseholdCategory,
 } from "@/lib/categories-server";
+import { defaultUnitForCategory, normalizeQuantityUnit } from "@/lib/units";
+import { productListSelect } from "@/lib/product-select";
 
 export async function GET() {
   const result = await requireVerifiedActor();
@@ -17,6 +19,7 @@ export async function GET() {
   const [products, categoryOrder] = await Promise.all([
     prisma.product.findMany({
       where: { householdId: result.session.householdId },
+      select: productListSelect,
     }),
     getHouseholdCategoryNames(result.session.householdId),
   ]);
@@ -29,7 +32,7 @@ export async function POST(request: Request) {
   if ("error" in result) return result.error;
   if (!result.isHead) return headOnlyError();
 
-  const { name, quantity = 0, category, unitPrice } = await request.json();
+  const { name, quantity = 0, category, unitPrice, quantityUnit } = await request.json();
   if (!name?.trim()) {
     return Response.json({ error: "יש להזין שם מוצר" }, { status: 400 });
   }
@@ -59,12 +62,16 @@ export async function POST(request: Request) {
       name: trimmedName,
       quantity: Math.max(0, Number(quantity) || 0),
       category: resolvedCategory,
+      quantityUnit: quantityUnit
+        ? normalizeQuantityUnit(quantityUnit)
+        : defaultUnitForCategory(resolvedCategory),
       unitPrice:
         unitPrice !== undefined && unitPrice !== null && unitPrice !== ""
           ? Math.max(0, Number(unitPrice))
           : null,
       householdId: result.session.householdId,
     },
+    select: productListSelect,
   });
 
   const { logActivity } = await import("@/lib/activity");

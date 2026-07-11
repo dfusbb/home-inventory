@@ -3,15 +3,24 @@
 import { useMemo, useState } from "react";
 import { groupByCategory, sortProductsByCategory } from "@/lib/categories";
 import { generateInventoryPDF } from "@/lib/pdf";
+import ProductThumbnail from "@/components/ProductThumbnail";
+import {
+  formatQuantity,
+  priceUnitLabel,
+  quantityStep,
+  type QuantityUnit,
+} from "@/lib/units";
 
 export interface Product {
   id: string;
   name: string;
   quantity: number;
+  quantityUnit: QuantityUnit;
   unitPrice: number | null;
   category: string;
   store: string | null;
-  imageUrl: string | null;
+  hasImage: boolean;
+  imageUrl?: string | null;
   isMissing: boolean;
 }
 
@@ -25,9 +34,9 @@ interface InventoryColumnProps {
   onManageCategories: () => void;
 }
 
-function formatPrice(price: number | null): string {
+function formatPrice(price: number | null, unit?: QuantityUnit): string {
   if (price === null || price === undefined) return "—";
-  return `₪${price.toFixed(2)}`;
+  return unit ? `₪${price.toFixed(2)} ${priceUnitLabel(unit)}` : `₪${price.toFixed(2)}`;
 }
 
 function AddProductBar({
@@ -131,7 +140,7 @@ export default function InventoryColumn({
   async function quickUpdate(id: string, delta: number) {
     const product = products.find((p) => p.id === id);
     if (!product) return;
-    const newQty = Math.max(0, product.quantity + delta);
+    const newQty = Math.max(0, product.quantity + delta * quantityStep(product.quantityUnit));
     const res = await fetch(`/api/products/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -172,6 +181,7 @@ export default function InventoryColumn({
           category: p.category,
           unitPrice: p.unitPrice,
           stockQuantity: p.quantity,
+          quantityUnit: p.quantityUnit,
           store: p.store,
         })),
       });
@@ -188,7 +198,7 @@ export default function InventoryColumn({
         className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition hover:shadow-md hover:border-primary/30 ${
           product.isMissing || product.quantity === 0
             ? "bg-orange-50 border-orange-200"
-            : product.quantity <= 2
+            : product.quantity <= (product.quantityUnit === "kg" ? 1 : 2)
               ? "bg-yellow-50 border-yellow-200"
               : "bg-white border-border"
         }`}
@@ -203,7 +213,9 @@ export default function InventoryColumn({
           >
             −
           </button>
-          <span className="w-8 text-center font-bold text-lg">{product.quantity}</span>
+          <span className="w-14 text-center font-bold text-sm">
+            {formatQuantity(product.quantity, product.quantityUnit)}
+          </span>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -226,23 +238,15 @@ export default function InventoryColumn({
             <p className="text-xs text-green-700 mt-0.5">🏪 {product.store}</p>
           )}
           <p className="text-sm font-semibold text-slate-600 mt-1">
-            {formatPrice(product.unitPrice)}
+            {formatPrice(product.unitPrice, product.quantityUnit)}
           </p>
         </div>
 
-        {product.imageUrl ? (
-          <div className="w-14 h-14 rounded-lg border border-border bg-[repeating-conic-gradient(#e2e8f0_0%_25%,#f8fafc_0%_50%)] bg-[length:8px_8px] flex items-center justify-center overflow-hidden shrink-0">
-            <img
-              src={product.imageUrl}
-              alt={product.name}
-              className="max-w-full max-h-full object-contain"
-            />
-          </div>
-        ) : (
-          <div className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center text-xl shrink-0">
-            📦
-          </div>
-        )}
+        <ProductThumbnail
+          productId={product.id}
+          hasImage={product.hasImage}
+          alt={product.name}
+        />
       </div>
     );
   }
