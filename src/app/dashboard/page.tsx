@@ -19,6 +19,7 @@ export default function DashboardPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
   const [familyName, setFamilyName] = useState("");
   const [actorName, setActorName] = useState<string | null>(null);
   const [isHead, setIsHead] = useState(false);
@@ -37,11 +38,25 @@ export default function DashboardPage() {
   const loadDashboardData = useCallback(async () => {
     setDataLoading(true);
     setDataError("");
+    setRecoveryMessage("");
     try {
       const res = await fetch("/api/dashboard");
       if (res.ok) {
         const data = await res.json();
-        setProducts(data.products ?? []);
+        let nextProducts = data.products ?? [];
+        if (nextProducts.length === 0) {
+          const recoverRes = await fetch("/api/products/recover", { method: "POST" });
+          if (recoverRes.ok) {
+            const recovered = await recoverRes.json();
+            if ((recovered.products ?? []).length > 0) {
+              nextProducts = recovered.products;
+              if (recovered.recovered > 0) {
+                setRecoveryMessage(recovered.message || `שוחזרו ${recovered.recovered} מוצרים`);
+              }
+            }
+          }
+        }
+        setProducts(nextProducts);
         setShoppingItems(data.shoppingItems ?? []);
         if (data.categories) setCategories(data.categories);
         if (data.stores) setStores(data.stores);
@@ -60,8 +75,23 @@ export default function DashboardPage() {
 
       let recovered = false;
       if (productsRes.ok) {
-        setProducts(await productsRes.json());
-        recovered = true;
+        let nextProducts = await productsRes.json();
+        if (nextProducts.length === 0) {
+          const recoverRes = await fetch("/api/products/recover", { method: "POST" });
+          if (recoverRes.ok) {
+            const recoveredData = await recoverRes.json();
+            if ((recoveredData.products ?? []).length > 0) {
+              nextProducts = recoveredData.products;
+              if (recoveredData.recovered > 0) {
+                setRecoveryMessage(
+                  recoveredData.message || `שוחזרו ${recoveredData.recovered} מוצרים`
+                );
+              }
+            }
+          }
+        }
+        setProducts(nextProducts);
+        recovered = nextProducts.length > 0;
       }
       if (shoppingRes.ok) {
         setShoppingItems(await shoppingRes.json());
@@ -282,6 +312,11 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 h-[calc(100vh-64px)] md:h-[calc(100vh-72px)]">
+        {recoveryMessage && (
+          <div className="mb-3 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-700 text-center">
+            ✓ {recoveryMessage}
+          </div>
+        )}
         {dataError && (
           <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 text-center">
             {dataError}
