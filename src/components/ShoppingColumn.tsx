@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { groupByCategory } from "@/lib/categories";
+import { generateShoppingPDF } from "@/lib/pdf";
 import type { Product } from "@/components/InventoryColumn";
+import AddToShoppingModal from "@/components/AddToShoppingModal";
 
 interface ShoppingProduct {
   id: string;
@@ -10,12 +12,18 @@ interface ShoppingProduct {
   imageUrl: string | null;
   unitPrice: number | null;
   category: string;
+  store: string | null;
+  quantity: number;
 }
 
-interface ShoppingItem {
+export interface ShoppingItem {
   id: string;
   name: string;
   quantity: number;
+  unitPrice: number | null;
+  store: string | null;
+  isOneTime: boolean;
+  inCart: boolean;
   isChecked: boolean;
   addedBy: string;
   createdAt: string;
@@ -27,87 +35,154 @@ interface ShoppingColumnProps {
   items: ShoppingItem[];
   products: Product[];
   categories: string[];
+  stores: string[];
+  familyName: string;
   isHead: boolean;
   onItemsChange: (items: ShoppingItem[]) => void;
+  onProductsChange: (products: Product[]) => void;
   onManageCategories: () => void;
+  onManageStores: () => void;
 }
 
-function formatPrice(price: number | null): string {
-  if (price === null || price === undefined) return "";
+function formatPrice(price: number | null | undefined): string {
+  if (price === null || price === undefined) return "—";
   return `₪${price.toFixed(2)}`;
+}
+
+function itemPrice(item: ShoppingItem): number | null {
+  return item.product?.unitPrice ?? item.unitPrice ?? null;
 }
 
 export default function ShoppingColumn({
   items,
   products,
   categories,
+  stores,
+  familyName,
   isHead,
   onItemsChange,
+  onProductsChange,
   onManageCategories,
+  onManageStores,
 }: ShoppingColumnProps) {
   const [showPicker, setShowPicker] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [addError, setAddError] = useState("");
-  const [search, setSearch] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [pickQuantity, setPickQuantity] = useState(1);
+  const [showOneTime, setShowOneTime] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [listSearch, setListSearch] = useState("");
+  const [addModalProduct, setAddModalProduct] = useState<Product | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [oneTimeName, setOneTimeName] = useState("");
+  const [oneTimeQty, setOneTimeQty] = useState(1);
+  const [oneTimeStore, setOneTimeStore] = useState("");
+  const [oneTimePrice, setOneTimePrice] = useState("");
+  const [oneTimeLoading, setOneTimeLoading] = useState(false);
+  const [oneTimeError, setOneTimeError] = useState("");
 
   const activeItems = items.filter((i) => !i.isChecked);
   const boughtItems = items.filter((i) => i.isChecked);
 
-  const activeProductIds = new Set(
-    activeItems.map((i) => i.productId).filter(Boolean) as string[]
-  );
-
-  const availableProducts = useMemo(() => {
-    const filtered = products.filter((p) => !activeProductIds.has(p.id));
-    if (!search.trim()) return filtered;
-    const q = search.trim().toLowerCase();
-    return filtered.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q)
+  const filteredList = useMemo(() => {
+    if (!listSearch.trim()) return activeItems;
+    const q = listSearch.trim().toLowerCase();
+    return activeItems.filter(
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        (i.product?.category.toLowerCase().includes(q) ?? false) ||
+        (i.store?.toLowerCase().includes(q) ?? false)
     );
-  }, [products, activeProductIds, search]);
-
-  const pickerGroups = groupByCategory(availableProducts, categories);
+  }, [activeItems, listSearch]);
 
   const activeGroups = useMemo(() => {
-    const withCategory = activeItems.map((item) => ({
+    const withCategory = filteredList.map((item) => ({
       ...item,
-      category: item.product?.category ?? "אחר",
+      category: item.product?.category ?? "חד-פעמי",
     }));
-    return groupByCategory(withCategory, categories);
-  }, [activeItems, categories]);
+    return groupByCategory(withCategory, [...categories, "חד-פעמי"]);
+  }, [filteredList, categories]);
 
-  async function addFromInventory(productId: string, quantity: number) {
-    setAdding(true);
-    setAddError("");
+  const pickerProducts = useMemo(() => {
+    if (!pickerSearch.trim()) return products;
+    const q = pickerSearch.trim().toLowerCase();
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        (p.store?.toLowerCase().includes(q) ?? false)
+    );
+  }, [products, pickerSearch]);
+
+  const pickerGroups = groupByCategory(pickerProducts, categories);
+
+  const totalEstimate = activeItems.reduce((sum, item) => {
+    const price = itemPrice(item);
+    return price !== null ? sum + price * item.quantity : sum;
+  }, 0);
+
+  function getWarnings(product: Product): string[] {
+    const warnings: string[] = [];
+    if (product.quantity > 0) {
+      warnings.push(`קיים במלאי: ${product.quantity} יחידות`);
+    }
+    const recent = items.find((i) => i.productId === product.id && i.isChecked);
+    if (recent) warnings.push("נרכש לאחרונה");
+    return warnings;
+  }
+
+  function getExistingListQty(productId: string): number | undefined {
+    const existing = activeItems.find((i) => i.productId === productId);
+    return existing?.quantity;
+  }
+
+  function handleProductSelect(product: Product) {
+    setAddModalProduct(product);
+  }
+
+  function handleAdded(item: ShoppingItem, updatedProduct?: Product) {
+    const existing = items.find((i) => i.id === item.id);
+    if (existing) {
+      onItemsChange(items.map((i) => (i.id === item.id ? (item as ShoppingItem) : i)));
+    } else {
+      onItemsChange([item as ShoppingItem, ...items]);
+    }
+    if (updatedProduct) {
+      onProductsChange(
+        products.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
+      );
+    }
+    setShowPicker(false);
+    setPickerSearch("");
+  }
+
+  async function addOneTime() {
+    if (!oneTimeName.trim()) return;
+    setOneTimeLoading(true);
+    setOneTimeError("");
     try {
       const res = await fetch("/api/shopping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, quantity }),
+        body: JSON.stringify({
+          isOneTime: true,
+          name: oneTimeName.trim(),
+          quantity: oneTimeQty,
+          store: oneTimeStore || null,
+          unitPrice: oneTimePrice.trim() === "" ? null : Number(oneTimePrice),
+        }),
       });
       const data = await res.json();
-      if (res.ok) {
-        onItemsChange([data, ...items]);
-        setShowPicker(false);
-        setSearch("");
-        setSelectedProduct(null);
-        setPickQuantity(1);
-      } else {
-        setAddError(data.error || "שגיאה בהוספה");
+      if (!res.ok) {
+        setOneTimeError(data.error || "שגיאה");
+        return;
       }
+      onItemsChange([data, ...items]);
+      setShowOneTime(false);
+      setOneTimeName("");
+      setOneTimeQty(1);
+      setOneTimeStore("");
+      setOneTimePrice("");
     } finally {
-      setAdding(false);
+      setOneTimeLoading(false);
     }
-  }
-
-  function selectProduct(product: Product) {
-    setSelectedProduct(product);
-    setPickQuantity(1);
-    setAddError("");
   }
 
   async function updateQuantity(id: string, quantity: number) {
@@ -122,73 +197,92 @@ export default function ShoppingColumn({
     }
   }
 
-  async function toggleCheck(id: string, isChecked: boolean) {
-    const res = await fetch(`/api/shopping/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isChecked }),
-    });
-    if (res.ok) {
-      const updated = await res.json();
-      onItemsChange(items.map((i) => (i.id === id ? updated : i)));
-    }
-  }
-
   async function removeItem(id: string) {
     const res = await fetch(`/api/shopping/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      onItemsChange(items.filter((i) => i.id !== id));
+    if (res.ok) onItemsChange(items.filter((i) => i.id !== id));
+  }
+
+  async function downloadPDF() {
+    setDownloading(true);
+    try {
+      await generateShoppingPDF({
+        familyName,
+        shopperName: "רשימת קניות",
+        categories,
+        stores,
+        date: new Date(),
+        items: activeItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          category: item.product?.category ?? "חד-פעמי",
+          store: item.store ?? item.product?.store,
+          unitPrice: itemPrice(item),
+        })),
+      });
+    } finally {
+      setDownloading(false);
     }
   }
 
   function renderItemRow(item: ShoppingItem) {
+    const price = itemPrice(item);
     return (
       <div
         key={item.id}
-        className="flex items-center gap-3 p-3 rounded-xl border border-border bg-white"
+        className="flex items-start gap-3 p-3 rounded-xl border border-border bg-white"
       >
-        <button
-          onClick={() => toggleCheck(item.id, true)}
-          className="w-6 h-6 rounded-md border-2 border-slate-300 hover:border-primary hover:bg-blue-50 shrink-0 transition"
-        />
         {item.product?.imageUrl ? (
           <img
             src={item.product.imageUrl}
             alt={item.name}
-            className="w-10 h-10 rounded-lg object-contain border border-border shrink-0"
+            className="w-12 h-12 rounded-lg object-contain border border-border shrink-0"
           />
         ) : (
-          <span className="text-lg shrink-0">📦</span>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-slate-800">{item.name}</p>
-          <p className="text-xs text-muted">נוסף ע&quot;י {item.addedBy}</p>
-        </div>
-        {item.product?.unitPrice != null && (
-          <span className="text-xs font-semibold text-slate-500 shrink-0">
-            {formatPrice(item.product.unitPrice)}
+          <span className="text-lg shrink-0 w-12 text-center pt-1">
+            {item.isOneTime ? "🛒" : "📦"}
           </span>
         )}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-slate-800 break-words leading-snug">
+            {item.name}
+            {item.isOneTime && (
+              <span className="text-xs text-purple-600 mr-1"> (חד-פעמי)</span>
+            )}
+          </p>
+          <p className="text-xs text-muted mt-0.5">נוסף ע&quot;י {item.addedBy}</p>
+          {(item.store || item.product?.store) && (
+            <p className="text-xs text-green-700 mt-0.5">
+              🏪 {item.store || item.product?.store}
+            </p>
+          )}
+          <p className="text-sm font-semibold text-slate-600 mt-1">
+            {formatPrice(price)}
+            {price !== null && (
+              <span className="text-xs text-muted font-normal mr-1">
+                {" "}
+                (סה״כ {formatPrice(price * item.quantity)})
+              </span>
+            )}
+          </p>
+        </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
-            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
+            className="w-7 h-7 rounded-lg bg-slate-100 font-bold text-sm"
           >
             −
           </button>
-          <span className="w-7 text-center text-sm font-semibold text-slate-600">
-            {item.quantity}
-          </span>
+          <span className="w-7 text-center text-sm font-semibold">{item.quantity}</span>
           <button
             onClick={() => updateQuantity(item.id, item.quantity + 1)}
-            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
+            className="w-7 h-7 rounded-lg bg-slate-100 font-bold text-sm"
           >
             +
           </button>
         </div>
         <button
           onClick={() => removeItem(item.id)}
-          className="text-slate-400 hover:text-red-500 text-sm"
+          className="text-slate-400 hover:text-red-500 text-sm shrink-0"
         >
           ✕
         </button>
@@ -198,213 +292,197 @@ export default function ShoppingColumn({
 
   return (
     <>
+      {addModalProduct && (
+        <AddToShoppingModal
+          product={addModalProduct}
+          stores={stores}
+          warnings={getWarnings(addModalProduct)}
+          existingListQty={getExistingListQty(addModalProduct.id)}
+          onClose={() => setAddModalProduct(null)}
+          onAdded={(item, updated) =>
+            handleAdded(item as ShoppingItem, updated)
+          }
+        />
+      )}
+
       {showPicker && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4">
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col animate-slide-up">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
-              <div>
-                <h2 className="text-lg font-bold">בחרו מהמלאי</h2>
-                <p className="text-xs text-muted mt-0.5">רק מוצרים שכבר במלאי</p>
-              </div>
+            <div className="px-5 py-4 border-b border-border flex justify-between shrink-0">
+              <h2 className="text-lg font-bold">בחרו מהמלאי</h2>
               <button
                 onClick={() => {
                   setShowPicker(false);
-                  setSearch("");
-                  setAddError("");
-                  setSelectedProduct(null);
-                  setPickQuantity(1);
+                  setPickerSearch("");
                 }}
-                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center"
               >
                 ✕
               </button>
             </div>
-
-            <div className="px-4 py-3 border-b border-border shrink-0">
+            <div className="px-4 py-3 border-b shrink-0">
               <input
                 type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="חיפוש מוצר..."
-                className="w-full px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm"
+                value={pickerSearch}
+                onChange={(e) => setPickerSearch(e.target.value)}
+                placeholder="חיפוש..."
+                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm"
                 autoFocus
               />
             </div>
-
             <div className="flex-1 overflow-y-auto p-3">
-              {selectedProduct ? (
-                <div className="flex flex-col items-center py-6 px-4">
-                  {selectedProduct.imageUrl ? (
-                    <img
-                      src={selectedProduct.imageUrl}
-                      alt={selectedProduct.name}
-                      className="w-20 h-20 rounded-xl object-contain border border-border mb-4"
-                    />
-                  ) : (
-                    <span className="text-5xl mb-4">📦</span>
-                  )}
-                  <p className="font-bold text-lg text-slate-800 text-center mb-1">
-                    {selectedProduct.name}
-                  </p>
-                  {selectedProduct.unitPrice != null && (
-                    <p className="text-sm text-muted mb-6">
-                      {formatPrice(selectedProduct.unitPrice)} ליחידה
-                    </p>
-                  )}
-                  <p className="text-sm font-medium text-slate-600 mb-3">כמה לקנות?</p>
-                  <div className="flex items-center gap-4 mb-6">
-                    <button
-                      onClick={() => setPickQuantity(Math.max(1, pickQuantity - 1))}
-                      className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-xl"
-                    >
-                      −
-                    </button>
-                    <span className="w-12 text-center font-bold text-2xl">{pickQuantity}</span>
-                    <button
-                      onClick={() => setPickQuantity(pickQuantity + 1)}
-                      className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-xl"
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div className="flex gap-2 w-full">
-                    <button
-                      onClick={() => setSelectedProduct(null)}
-                      className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-600 font-medium"
-                    >
-                      חזור
-                    </button>
-                    <button
-                      onClick={() => addFromInventory(selectedProduct.id, pickQuantity)}
-                      disabled={adding}
-                      className="flex-1 py-3 rounded-xl bg-orange-500 text-white font-semibold disabled:opacity-60"
-                    >
-                      {adding ? "..." : "הוסף לרשימה"}
-                    </button>
-                  </div>
-                </div>
-              ) : products.length === 0 ? (
-                <div className="text-center py-10 text-muted text-sm">
-                  <p>אין מוצרים במלאי</p>
-                  <p className="text-xs mt-1">הוסיפו מוצרים בעמודת המלאי קודם</p>
-                </div>
-              ) : availableProducts.length === 0 ? (
-                <div className="text-center py-10 text-muted text-sm">
-                  {search.trim()
-                    ? "לא נמצאו מוצרים"
-                    : "כל המוצרים כבר ברשימת הקניות"}
-                </div>
+              {pickerProducts.length === 0 ? (
+                <p className="text-center text-muted text-sm py-8">לא נמצאו מוצרים</p>
               ) : (
                 pickerGroups.map((group) => (
                   <div key={group.category} className="mb-3">
-                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-2 py-1.5 mb-1">
-                      <p className="text-xs font-bold text-primary uppercase tracking-wide">
-                        {group.category}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      {group.items.map((product) => (
-                        <button
-                          key={product.id}
-                          onClick={() => selectProduct(product)}
-                          disabled={adding}
-                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-white hover:bg-orange-50 hover:border-orange-200 transition text-right disabled:opacity-60"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-slate-800 truncate">
-                              {product.name}
-                            </p>
-                            {product.unitPrice !== null && (
-                              <p className="text-xs text-muted">
-                                {formatPrice(product.unitPrice)} ליחידה
-                              </p>
-                            )}
-                          </div>
-                          {product.imageUrl ? (
-                            <img
-                              src={product.imageUrl}
-                              alt={product.name}
-                              className="w-10 h-10 rounded-lg object-contain border border-border shrink-0"
-                            />
-                          ) : (
-                            <span className="text-lg shrink-0">📦</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                    <p className="text-xs font-bold text-primary px-2 py-1">{group.category}</p>
+                    {group.items.map((product) => (
+                      <button
+                        key={product.id}
+                        onClick={() => handleProductSelect(product)}
+                        className="w-full flex items-start gap-3 p-3 rounded-xl border border-border mb-1 hover:bg-orange-50 text-right"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium break-words">{product.name}</p>
+                          <p className="text-xs text-muted">
+                            במלאי: {product.quantity} · {formatPrice(product.unitPrice)}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
 
-            {addError && (
-              <p className="text-xs text-red-500 px-4 pb-3 shrink-0">{addError}</p>
-            )}
+      {showOneTime && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-bold mb-4">הוספת קנייה חד-פעמית</h2>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={oneTimeName}
+                onChange={(e) => setOneTimeName(e.target.value)}
+                placeholder="שם המוצר (מחבת, מזגן...)"
+                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm"
+                autoFocus
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-sm">כמות:</span>
+                <button onClick={() => setOneTimeQty(Math.max(1, oneTimeQty - 1))} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">−</button>
+                <span className="font-bold">{oneTimeQty}</span>
+                <button onClick={() => setOneTimeQty(oneTimeQty + 1)} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">+</button>
+              </div>
+              <input
+                type="number"
+                value={oneTimePrice}
+                onChange={(e) => setOneTimePrice(e.target.value)}
+                placeholder="מחיר (אופציונלי)"
+                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm"
+                min={0}
+                step={0.01}
+              />
+              <select
+                value={oneTimeStore}
+                onChange={(e) => setOneTimeStore(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-border text-sm bg-white"
+              >
+                <option value="">חנות (אופציונלי)</option>
+                {stores.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            {oneTimeError && <p className="text-xs text-red-500 mt-2">{oneTimeError}</p>}
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setShowOneTime(false)} className="flex-1 py-3 rounded-xl bg-slate-100">ביטול</button>
+              <button onClick={addOneTime} disabled={oneTimeLoading} className="flex-1 py-3 rounded-xl bg-purple-600 text-white font-semibold disabled:opacity-60">
+                {oneTimeLoading ? "..." : "הוסף"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       <div className="flex flex-col h-full bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-border bg-gradient-to-l from-orange-50 to-white">
+        <div className="px-5 py-4 border-b border-border bg-gradient-to-l from-orange-50 to-white space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <h2 className="text-lg font-bold flex items-center gap-2">
                 <span>🛍️</span> צריך לקנות
               </h2>
-              <p className="text-xs text-muted mt-0.5">{activeItems.length} פריטים ברשימה</p>
+              <p className="text-xs text-muted">{activeItems.length} פריטים</p>
             </div>
-            {isHead && (
+            <div className="flex gap-1">
               <button
-                onClick={onManageCategories}
-                className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 transition"
-                title="ניהול קטגוריות"
+                onClick={downloadPDF}
+                disabled={downloading || activeItems.length === 0}
+                className="px-2 py-1.5 rounded-lg bg-white border text-xs disabled:opacity-50"
               >
-                🏷️ קטגוריות
+                📄 PDF
               </button>
-            )}
+              {isHead && (
+                <>
+                  <button onClick={onManageStores} className="px-2 py-1.5 rounded-lg bg-white border text-xs">🏪</button>
+                  <button onClick={onManageCategories} className="px-2 py-1.5 rounded-lg bg-white border text-xs">🏷️</button>
+                </>
+              )}
+            </div>
           </div>
+          <input
+            type="text"
+            value={listSearch}
+            onChange={(e) => setListSearch(e.target.value)}
+            placeholder="חיפוש ברשימה..."
+            className="w-full px-3 py-2 rounded-xl border border-border text-sm"
+          />
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
-          {activeItems.length === 0 && (
-            <div className="text-center py-12 text-muted">
-              <div className="text-4xl mb-2">✅</div>
-              <p className="text-sm">הכל במלאי!</p>
-              <p className="text-xs mt-1">לחצו למטה לבחירת מוצרים מהמלאי</p>
-            </div>
+          {filteredList.length === 0 && (
+            <div className="text-center py-10 text-muted text-sm">אין פריטים ברשימה</div>
           )}
-
           {activeGroups.map((group) => (
             <div key={group.category}>
-              <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm px-2 py-1.5 mb-1">
-                <p className="text-xs font-bold text-primary uppercase tracking-wide">
-                  {group.category}
-                </p>
+              <div className="sticky top-0 z-10 bg-card/95 px-2 py-1.5 mb-1">
+                <p className="text-xs font-bold text-primary">{group.category}</p>
               </div>
               <div className="space-y-2">{group.items.map(renderItemRow)}</div>
             </div>
           ))}
-
           {boughtItems.length > 0 && (
-            <div className="pt-3">
-              <p className="text-xs text-muted px-1 mb-2">נרכשו לאחרונה</p>
+            <div className="pt-2 opacity-60">
+              <p className="text-xs text-muted mb-1">נרכשו לאחרונה</p>
               {boughtItems.slice(0, 5).map((item) => (
-                <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg opacity-50">
-                  <span className="text-green-500 text-sm">✓</span>
-                  <p className="text-sm line-through text-slate-500">{item.name}</p>
-                </div>
+                <p key={item.id} className="text-sm line-through text-slate-500">{item.name}</p>
               ))}
             </div>
           )}
         </div>
 
-        <div className="p-3 border-t border-border">
+        {totalEstimate > 0 && (
+          <p className="text-center text-sm font-semibold text-slate-700 py-2 border-t border-border">
+            סה״כ משוער: {formatPrice(totalEstimate)}
+          </p>
+        )}
+
+        <div className="p-3 border-t border-border space-y-2">
           <button
             onClick={() => setShowPicker(true)}
-            disabled={products.length === 0}
-            className="w-full py-3 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-2.5 rounded-xl bg-orange-500 text-white font-semibold text-sm"
           >
-            <span className="text-lg">+</span> בחרו מהמלאי
+            + בחרו מהמלאי
+          </button>
+          <button
+            onClick={() => setShowOneTime(true)}
+            className="w-full py-2.5 rounded-xl bg-purple-100 text-purple-800 font-medium text-sm"
+          >
+            + קנייה חד-פעמית
           </button>
         </div>
       </div>

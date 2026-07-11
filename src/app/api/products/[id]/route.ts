@@ -3,6 +3,7 @@ import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
 import { normalizeProductName } from "@/lib/categories";
 import { isValidHouseholdCategory } from "@/lib/categories-server";
+import { isValidHouseholdStore } from "@/lib/stores-server";
 
 export async function PATCH(
   request: Request,
@@ -41,6 +42,7 @@ export async function PATCH(
     isMissing?: boolean;
     category?: string;
     unitPrice?: number | null;
+    store?: string | null;
   } = {};
 
   if (body.name !== undefined) {
@@ -76,6 +78,12 @@ export async function PATCH(
         : Number(body.unitPrice);
     data.unitPrice =
       parsed === null || Number.isNaN(parsed) ? null : Math.max(0, parsed);
+  }
+  if (body.store !== undefined && isHead) {
+    const storeVal = body.store === null || body.store === "" ? null : String(body.store).trim();
+    if (storeVal === null || (await isValidHouseholdStore(session.householdId, storeVal))) {
+      data.store = storeVal;
+    }
   }
 
   const product = await prisma.product.update({

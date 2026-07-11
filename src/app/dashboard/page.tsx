@@ -9,25 +9,10 @@ import TripColumn from "@/components/TripColumn";
 import ProductEditModal from "@/components/ProductEditModal";
 import FamilyMembersPanel from "@/components/FamilyMembersPanel";
 import CategoriesPanel from "@/components/CategoriesPanel";
+import StoresPanel from "@/components/StoresPanel";
 import ReportsPanel from "@/components/ReportsPanel";
 import { DEFAULT_CATEGORIES, sortProductsByCategory } from "@/lib/categories";
-
-interface ShoppingItem {
-  id: string;
-  name: string;
-  quantity: number;
-  isChecked: boolean;
-  addedBy: string;
-  createdAt: string;
-  productId: string | null;
-  product: {
-    id: string;
-    name: string;
-    imageUrl: string | null;
-    unitPrice: number | null;
-    category: string;
-  } | null;
-}
+import type { ShoppingItem } from "@/components/ShoppingColumn";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -42,7 +27,9 @@ export default function DashboardPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showReports, setShowReports] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
+  const [showStores, setShowStores] = useState(false);
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
+  const [stores, setStores] = useState<string[]>([]);
   const [mobileTab, setMobileTab] = useState<"inventory" | "shopping" | "trip">("inventory");
 
   const loadData = useCallback(async () => {
@@ -75,10 +62,11 @@ export default function DashboardPage() {
     setActorName(me.actorName);
     setIsHead(me.isHead);
 
-    const [productsRes, shoppingRes, categoriesRes] = await Promise.all([
+    const [productsRes, shoppingRes, categoriesRes, storesRes] = await Promise.all([
       fetch("/api/products"),
       fetch("/api/shopping"),
       fetch("/api/categories"),
+      fetch("/api/stores"),
     ]);
 
     if (productsRes.ok) setProducts(await productsRes.json());
@@ -86,6 +74,10 @@ export default function DashboardPage() {
     if (categoriesRes.ok) {
       const data = await categoriesRes.json();
       setCategories(data.categories);
+    }
+    if (storesRes.ok) {
+      const data = await storesRes.json();
+      setStores(data.stores);
     }
     setLoading(false);
   }, [router]);
@@ -95,16 +87,21 @@ export default function DashboardPage() {
     setIsHead(!!head);
     setShowActorModal(false);
     setLoading(true);
-    const [productsRes, shoppingRes, categoriesRes] = await Promise.all([
+    const [productsRes, shoppingRes, categoriesRes, storesRes] = await Promise.all([
       fetch("/api/products"),
       fetch("/api/shopping"),
       fetch("/api/categories"),
+      fetch("/api/stores"),
     ]);
     if (productsRes.ok) setProducts(await productsRes.json());
     if (shoppingRes.ok) setShoppingItems(await shoppingRes.json());
     if (categoriesRes.ok) {
       const data = await categoriesRes.json();
       setCategories(data.categories);
+    }
+    if (storesRes.ok) {
+      const data = await storesRes.json();
+      setStores(data.stores);
     }
     setLoading(false);
   }
@@ -160,10 +157,19 @@ export default function DashboardPage() {
         />
       )}
 
+      {showStores && (
+        <StoresPanel
+          stores={stores}
+          onClose={() => setShowStores(false)}
+          onStoresChange={setStores}
+        />
+      )}
+
       {editingProduct && (
         <ProductEditModal
           product={editingProduct}
           categories={categories}
+          stores={stores}
           isHead={isHead}
           onClose={() => setEditingProduct(null)}
           onUpdate={(updated) => {
@@ -270,6 +276,7 @@ export default function DashboardPage() {
           <InventoryColumn
             products={products}
             categories={categories}
+            familyName={familyName}
             isHead={isHead}
             onProductsChange={setProducts}
             onEdit={setEditingProduct}
@@ -279,17 +286,25 @@ export default function DashboardPage() {
             items={shoppingItems}
             products={products}
             categories={categories}
+            stores={stores}
+            familyName={familyName}
             isHead={isHead}
             onItemsChange={setShoppingItems}
+            onProductsChange={setProducts}
             onManageCategories={() => setShowCategories(true)}
+            onManageStores={() => setShowStores(true)}
           />
           <TripColumn
             items={shoppingItems}
+            products={products}
             categories={categories}
+            stores={stores}
             familyName={familyName}
             actorName={actorName || ""}
             isHead={isHead}
-            onManageCategories={() => setShowCategories(true)}
+            onItemsChange={setShoppingItems}
+            onProductsChange={setProducts}
+            onManageStores={() => setShowStores(true)}
           />
         </div>
 
@@ -298,6 +313,7 @@ export default function DashboardPage() {
             <InventoryColumn
               products={products}
               categories={categories}
+              familyName={familyName}
               isHead={isHead}
               onProductsChange={setProducts}
               onEdit={setEditingProduct}
@@ -309,19 +325,27 @@ export default function DashboardPage() {
               items={shoppingItems}
               products={products}
               categories={categories}
+              stores={stores}
+              familyName={familyName}
               isHead={isHead}
               onItemsChange={setShoppingItems}
+              onProductsChange={setProducts}
               onManageCategories={() => setShowCategories(true)}
+              onManageStores={() => setShowStores(true)}
             />
           )}
           {mobileTab === "trip" && (
             <TripColumn
               items={shoppingItems}
+              products={products}
               categories={categories}
+              stores={stores}
               familyName={familyName}
               actorName={actorName || ""}
               isHead={isHead}
-              onManageCategories={() => setShowCategories(true)}
+              onItemsChange={setShoppingItems}
+              onProductsChange={setProducts}
+              onManageStores={() => setShowStores(true)}
             />
           )}
         </div>

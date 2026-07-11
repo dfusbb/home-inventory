@@ -1,6 +1,21 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
+import { isValidHouseholdStore } from "@/lib/stores-server";
+
+const shoppingInclude = {
+  product: {
+    select: {
+      id: true,
+      name: true,
+      imageUrl: true,
+      unitPrice: true,
+      category: true,
+      store: true,
+      quantity: true,
+    },
+  },
+} as const;
 
 export async function GET() {
   const result = await requireVerifiedActor();
@@ -8,17 +23,7 @@ export async function GET() {
 
   const items = await prisma.shoppingItem.findMany({
     where: { householdId: result.session.householdId },
-    include: {
-      product: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-          unitPrice: true,
-          category: true,
-        },
-      },
-    },
+    include: shoppingInclude,
     orderBy: [{ isChecked: "asc" }, { createdAt: "desc" }],
   });
 
@@ -29,62 +34,132 @@ export async function POST(request: Request) {
   const result = await requireVerifiedActor();
   if ("error" in result) return result.error;
 
-  const { productId, quantity = 1 } = await request.json();
+  const { actorName, session } = result;
+  const body = await request.json();
+  const {
+    productId,
+    name,
+    quantity = 1,
+    store,
+    isOneTime,
+    updateStockQuantity,
+  } = body;
+
+  const qty = Math.max(1, Number(quantity) || 1);
+  const resolvedStore =
+    store?.trim() || null;
+
+  if (resolvedStore) {
+    const valid = await isValidHouseholdStore(session.householdId, resolvedStore);
+    if (!valid) {
+      return Response.json({ error: "חנות לא רשומה" }, { status: 400 });
+    }
+  }
+
+  if (isOneTime || (!productId && name?.trim())) {
+    const trimmedName = name?.trim();
+    if (!trimmedName) {
+      return Response.json({ error: "יש להזין שם מוצר" }, { status: 400 });
+    }
+
+    const item = await prisma.shoppingItem.create({
+      data: {
+        name: trimmedName,
+        quantity: qty,
+        store: resolvedStore,
+        unitPrice:
+          body.unitPrice !== undefined && body.unitPrice !== null && body.unitPrice !== ""
+            ? Math.max(0, Number(body.unitPrice))
+            : null,
+        isOneTime: true,
+        householdId: session.householdId,
+        addedBy: actorName,
+      },
+      include: shoppingInclude,
+    });
+
+    await logActivity(
+      session.householdId,
+      actorName,
+      "הוספה חד-פעמית לקניות",
+      `כמות: ${qty}`,
+      trimmedName
+    );
+
+    return Response.json(item, { status: 201 });
+  }
 
   if (!productId) {
-    return Response.json(
-      { error: "יש לבחור מוצר מהמלאי" },
-      { status: 400 }
-    );
+    return Response.json({ error: "יש לבחור מוצר" }, { status: 400 });
   }
 
   const product = await prisma.product.findFirst({
-    where: { id: productId, householdId: result.session.householdId },
+    where: { id: productId, householdId: session.householdId },
   });
 
   if (!product) {
     return Response.json({ error: "מוצר לא נמצא במלאי" }, { status: 404 });
   }
 
+  if (updateStockQuantity !== undefined) {
+    await prisma.product.update({
+      where: { id: product.id },
+      data: {
+        quantity: Math.max(0, Number(updateStockQuantity) || 0),
+        store: resolvedStore ?? product.store,
+      },
+    });
+  } else if (resolvedStore) {
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { store: resolvedStore },
+    });
+  }
+
   const existingItem = await prisma.shoppingItem.findFirst({
     where: {
-      householdId: result.session.householdId,
+      householdId: session.householdId,
       productId: product.id,
       isChecked: false,
     },
   });
 
   if (existingItem) {
-    return Response.json(
-      { error: "המוצר כבר ברשימת הקניות" },
-      { status: 409 }
+    const item = await prisma.shoppingItem.update({
+      where: { id: existingItem.id },
+      data: {
+        quantity: existingItem.quantity + qty,
+        store: resolvedStore ?? existingItem.store,
+      },
+      include: shoppingInclude,
+    });
+
+    await logActivity(
+      session.householdId,
+      actorName,
+      "הוספה לרשימת קניות",
+      `כמות: ${item.quantity}`,
+      item.name
     );
+
+    return Response.json(item);
   }
 
   const item = await prisma.shoppingItem.create({
     data: {
       name: product.name,
-      quantity: Math.max(1, Number(quantity) || 1),
+      quantity: qty,
+      store: resolvedStore ?? product.store,
       productId: product.id,
-      householdId: result.session.householdId,
-      addedBy: result.actorName,
+      householdId: session.householdId,
+      addedBy: actorName,
     },
-    include: {
-      product: {
-        select: {
-          id: true,
-          name: true,
-          imageUrl: true,
-          unitPrice: true,
-          category: true,
-        },
-      },
-    },
+    include: shoppingInclude,
   });
 
   await logActivity(
-    result.session.householdId,
-    result.actorName,
+    session.householdId,
+    actorName,
     "הוספה לרשימת קניות",
     `כמות: ${item.quantity}`,
     item.name

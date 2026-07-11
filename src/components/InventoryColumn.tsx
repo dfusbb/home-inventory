@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { groupByCategory, sortProductsByCategory } from "@/lib/categories";
+import { generateInventoryPDF } from "@/lib/pdf";
 
 export interface Product {
   id: string;
@@ -9,6 +10,7 @@ export interface Product {
   quantity: number;
   unitPrice: number | null;
   category: string;
+  store: string | null;
   imageUrl: string | null;
   isMissing: boolean;
 }
@@ -16,6 +18,7 @@ export interface Product {
 interface InventoryColumnProps {
   products: Product[];
   categories: string[];
+  familyName: string;
   isHead: boolean;
   onProductsChange: (products: Product[]) => void;
   onEdit: (product: Product) => void;
@@ -27,32 +30,113 @@ function formatPrice(price: number | null): string {
   return `₪${price.toFixed(2)}`;
 }
 
-export default function InventoryColumn({
-  products,
-  categories,
-  isHead,
-  onProductsChange,
-  onEdit,
-  onManageCategories,
-}: InventoryColumnProps) {
+function AddProductBar({
+  onAdd,
+}: {
+  onAdd: (name: string) => Promise<void>;
+}) {
   const [newName, setNewName] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState("");
 
-  const groups = groupByCategory(products, categories);
+  async function addProduct() {
+    if (!newName.trim()) return;
+    setAdding(true);
+    setAddError("");
+    try {
+      await onAdd(newName.trim());
+      setNewName("");
+      setShowAdd(false);
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : "שגיאה");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  if (!showAdd) {
+    return (
+      <button
+        onClick={() => setShowAdd(true)}
+        className="w-full py-2.5 rounded-xl bg-primary text-white font-semibold hover:bg-[var(--primary-hover)] transition flex items-center justify-center gap-2 text-sm"
+      >
+        <span>+</span> הוסף מוצר חדש
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => {
+            setNewName(e.target.value);
+            setAddError("");
+          }}
+          placeholder="שם המוצר החדש"
+          className="flex-1 px-3 py-2 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm"
+          autoFocus
+          onKeyDown={(e) => e.key === "Enter" && addProduct()}
+        />
+        <button
+          onClick={addProduct}
+          disabled={adding}
+          className="px-3 py-2 rounded-xl bg-primary text-white text-sm font-semibold disabled:opacity-60"
+        >
+          {adding ? "..." : "הוסף"}
+        </button>
+        <button
+          onClick={() => {
+            setShowAdd(false);
+            setAddError("");
+          }}
+          className="px-2 py-2 rounded-xl bg-slate-100 text-slate-500 text-sm"
+        >
+          ✕
+        </button>
+      </div>
+      {addError && <p className="text-xs text-red-500 px-1">{addError}</p>}
+    </div>
+  );
+}
+
+export default function InventoryColumn({
+  products,
+  categories,
+  familyName,
+  isHead,
+  onProductsChange,
+  onEdit,
+  onManageCategories,
+}: InventoryColumnProps) {
+  const [search, setSearch] = useState("");
+  const [downloading, setDownloading] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return products;
+    const q = search.trim().toLowerCase();
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        (p.store?.toLowerCase().includes(q) ?? false)
+    );
+  }, [products, search]);
+
+  const groups = groupByCategory(filtered, categories);
 
   async function quickUpdate(id: string, delta: number) {
     const product = products.find((p) => p.id === id);
     if (!product) return;
-
     const newQty = Math.max(0, product.quantity + delta);
     const res = await fetch(`/api/products/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ quantity: newQty }),
     });
-
     if (res.ok) {
       const updated = await res.json();
       onProductsChange(
@@ -64,26 +148,35 @@ export default function InventoryColumn({
     }
   }
 
-  async function addProduct() {
-    if (!newName.trim()) return;
-    setAdding(true);
-    setAddError("");
+  async function addProduct(name: string) {
+    const res = await fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, quantity: 0 }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "שגיאה בהוספת מוצר");
+    onProductsChange(sortProductsByCategory([...products, data], categories));
+  }
+
+  async function downloadPDF() {
+    setDownloading(true);
     try {
-      const res = await fetch("/api/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), quantity: 0 }),
+      await generateInventoryPDF({
+        familyName,
+        categories,
+        date: new Date(),
+        items: products.map((p) => ({
+          name: p.name,
+          quantity: 0,
+          category: p.category,
+          unitPrice: p.unitPrice,
+          stockQuantity: p.quantity,
+          store: p.store,
+        })),
       });
-      const data = await res.json();
-      if (res.ok) {
-        onProductsChange(sortProductsByCategory([...products, data], categories));
-        setNewName("");
-        setShowAdd(false);
-      } else {
-        setAddError(data.error || "שגיאה בהוספת מוצר");
-      }
     } finally {
-      setAdding(false);
+      setDownloading(false);
     }
   }
 
@@ -92,7 +185,7 @@ export default function InventoryColumn({
       <div
         key={product.id}
         onClick={() => onEdit(product)}
-        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition hover:shadow-md hover:border-primary/30 ${
+        className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition hover:shadow-md hover:border-primary/30 ${
           product.isMissing || product.quantity === 0
             ? "bg-orange-50 border-orange-200"
             : product.quantity <= 2
@@ -100,7 +193,7 @@ export default function InventoryColumn({
               : "bg-white border-border"
         }`}
       >
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -123,26 +216,30 @@ export default function InventoryColumn({
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-slate-800 truncate">{product.name}</p>
+          <p className="font-medium text-slate-800 break-words leading-snug">
+            {product.name}
+          </p>
           {(product.isMissing || product.quantity === 0) && (
-            <p className="text-xs text-orange-600">חסר במלאי</p>
+            <p className="text-xs text-orange-600 mt-0.5">חסר במלאי</p>
           )}
+          {product.store && (
+            <p className="text-xs text-green-700 mt-0.5">🏪 {product.store}</p>
+          )}
+          <p className="text-sm font-semibold text-slate-600 mt-1">
+            {formatPrice(product.unitPrice)}
+          </p>
         </div>
 
-        <span className="text-xs font-semibold text-slate-500 shrink-0 w-14 text-center">
-          {formatPrice(product.unitPrice)}
-        </span>
-
         {product.imageUrl ? (
-          <div className="w-12 h-12 rounded-lg border border-border bg-[repeating-conic-gradient(#e2e8f0_0%_25%,#f8fafc_0%_50%)] bg-[length:8px_8px] flex items-center justify-center overflow-hidden shrink-0">
+          <div className="w-14 h-14 rounded-lg border border-border bg-[repeating-conic-gradient(#e2e8f0_0%_25%,#f8fafc_0%_50%)] bg-[length:8px_8px] flex items-center justify-center overflow-hidden shrink-0">
             <img
               src={product.imageUrl}
               alt={product.name}
-              className="w-full h-full object-contain"
+              className="max-w-full max-h-full object-contain"
             />
           </div>
         ) : (
-          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-lg shrink-0">
+          <div className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center text-xl shrink-0">
             📦
           </div>
         )}
@@ -152,7 +249,7 @@ export default function InventoryColumn({
 
   return (
     <div className="flex flex-col h-full bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-border bg-gradient-to-l from-blue-50 to-white">
+      <div className="px-5 py-4 border-b border-border bg-gradient-to-l from-blue-50 to-white space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -160,29 +257,41 @@ export default function InventoryColumn({
             </h2>
             <p className="text-xs text-muted mt-0.5">{products.length} מוצרים</p>
           </div>
-          {isHead && (
+          <div className="flex gap-1.5">
             <button
-              onClick={onManageCategories}
-              className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 transition"
-              title="ניהול קטגוריות"
+              onClick={downloadPDF}
+              disabled={downloading || products.length === 0}
+              className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              title="הורד PDF"
             >
-              🏷️ קטגוריות
+              {downloading ? "..." : "📄 PDF"}
             </button>
-          )}
+            {isHead && (
+              <button
+                onClick={onManageCategories}
+                className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50"
+              >
+                🏷️ קטגוריות
+              </button>
+            )}
+          </div>
         </div>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="חיפוש במלאי..."
+          className="w-full px-3 py-2 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        {isHead && <AddProductBar onAdd={addProduct} />}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {products.length === 0 && (
+        {filtered.length === 0 && (
           <div className="text-center py-12 text-muted">
-            <div className="text-4xl mb-2">🛒</div>
-            <p className="text-sm">אין מוצרים עדיין</p>
-            <p className="text-xs mt-1">
-              {isHead ? "לחצו + להוספת מוצר" : "פנו לראש המשפחה להוספת מוצרים"}
-            </p>
+            <p className="text-sm">{search.trim() ? "לא נמצאו מוצרים" : "אין מוצרים עדיין"}</p>
           </div>
         )}
-
         {groups.map((group) => (
           <div key={group.category}>
             <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm px-2 py-1.5 mb-1">
@@ -197,48 +306,7 @@ export default function InventoryColumn({
 
       {isHead && (
         <div className="p-3 border-t border-border">
-          {showAdd ? (
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => {
-                    setNewName(e.target.value);
-                    setAddError("");
-                  }}
-                  placeholder="שם המוצר החדש"
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-sm"
-                  autoFocus
-                  onKeyDown={(e) => e.key === "Enter" && addProduct()}
-                />
-                <button
-                  onClick={addProduct}
-                  disabled={adding}
-                  className="px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold disabled:opacity-60"
-                >
-                  {adding ? "..." : "הוסף"}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAdd(false);
-                    setAddError("");
-                  }}
-                  className="px-3 py-2.5 rounded-xl bg-slate-100 text-slate-500 text-sm"
-                >
-                  ✕
-                </button>
-              </div>
-              {addError && <p className="text-xs text-red-500 px-1">{addError}</p>}
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowAdd(true)}
-              className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:bg-[var(--primary-hover)] transition flex items-center justify-center gap-2 shadow-md shadow-blue-200/50"
-            >
-              <span className="text-lg">+</span> הוסף מוצר חדש
-            </button>
-          )}
+          <AddProductBar onAdd={addProduct} />
         </div>
       )}
     </div>

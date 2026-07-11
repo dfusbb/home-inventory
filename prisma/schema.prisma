@@ -19,6 +19,7 @@ model Household {
   activityLogs ActivityLog[]
   members      FamilyMember[]
   categories   ProductCategory[]
+  stores       ProductStore[]
 }
 
 model FamilyMember {
@@ -42,12 +43,23 @@ model ProductCategory {
   @@unique([householdId, name])
 }
 
+model ProductStore {
+  id          String    @id @default(uuid())
+  name        String
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([householdId, name])
+}
+
 model Product {
   id          String         @id @default(uuid())
   name        String
   quantity    Int            @default(0)
   unitPrice   Float?
   category    String         @default("אחר")
+  store       String?
   imageUrl    String?
   isMissing   Boolean        @default(false)
   householdId String
@@ -63,6 +75,10 @@ model ShoppingItem {
   product     Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
   name        String
   quantity    Int       @default(1)
+  unitPrice   Float?
+  store       String?
+  isOneTime   Boolean   @default(false)
+  inCart      Boolean   @default(false)
   isChecked   Boolean   @default(false)
   householdId String
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)

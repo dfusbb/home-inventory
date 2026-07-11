@@ -8,6 +8,7 @@ import type { Product } from "@/components/InventoryColumn";
 interface ProductEditModalProps {
   product: Product;
   categories: string[];
+  stores: string[];
   isHead: boolean;
   onClose: () => void;
   onUpdate: (product: Product) => void;
@@ -18,6 +19,7 @@ interface ProductEditModalProps {
 export default function ProductEditModal({
   product,
   categories,
+  stores,
   isHead,
   onClose,
   onUpdate,
@@ -30,6 +32,7 @@ export default function ProductEditModal({
   const [unitPrice, setUnitPrice] = useState(
     product.unitPrice !== null ? String(product.unitPrice) : ""
   );
+  const [store, setStore] = useState(product.store || "");
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
@@ -112,6 +115,7 @@ export default function ProductEditModal({
       quantity,
       category,
       unitPrice: parsedPrice,
+      store: store || null,
     });
   }
 
@@ -287,6 +291,20 @@ export default function ProductEditModal({
                 placeholder="לדוגמה: 5.90"
                 className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-600">חנות</label>
+              <select
+                value={store}
+                onChange={(e) => setStore(e.target.value)}
+                className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border bg-white text-sm"
+              >
+                <option value="">ללא חנות</option>
+                {stores.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
             </div>
               </>
             )}

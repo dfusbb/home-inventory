@@ -25,7 +25,9 @@ export async function PATCH(
     where: { id },
     data: {
       isChecked: body.isChecked !== undefined ? Boolean(body.isChecked) : undefined,
+      inCart: body.inCart !== undefined ? Boolean(body.inCart) : undefined,
       quantity: body.quantity !== undefined ? Math.max(1, Number(body.quantity)) : undefined,
+      store: body.store !== undefined ? (body.store || null) : undefined,
     },
     include: {
       product: {
@@ -35,6 +37,8 @@ export async function PATCH(
           imageUrl: true,
           unitPrice: true,
           category: true,
+          store: true,
+          quantity: true,
         },
       },
     },
