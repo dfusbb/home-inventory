@@ -57,8 +57,11 @@ model Product {
   id          String         @id @default(uuid())
   name        String
   quantity    Float          @default(0)
+  unitCount   Float?
   quantityUnit String        @default("unit")
   unitPrice   Float?
+  packagePrice Float?
+  packageWeight Float?
   category    String         @default("אחר")
   store       String?
   imageUrl    String?

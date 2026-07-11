@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { groupByCategory, sortProductsByCategory } from "@/lib/categories";
 import { generateInventoryPDF } from "@/lib/pdf";
 import ProductThumbnail from "@/components/ProductThumbnail";
+import ColumnRefreshButton from "@/components/ColumnRefreshButton";
+import QuantityStepper from "@/components/QuantityStepper";
 import {
   formatQuantity,
   priceUnitLabel,
@@ -15,8 +17,11 @@ export interface Product {
   id: string;
   name: string;
   quantity: number;
+  unitCount: number | null;
   quantityUnit: QuantityUnit;
   unitPrice: number | null;
+  packagePrice: number | null;
+  packageWeight: number | null;
   category: string;
   store: string | null;
   hasImage: boolean;
@@ -32,6 +37,8 @@ interface InventoryColumnProps {
   onProductsChange: (products: Product[]) => void;
   onEdit: (product: Product) => void;
   onManageCategories: () => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 function formatPrice(price: number | null, unit?: QuantityUnit): string {
@@ -120,6 +127,8 @@ export default function InventoryColumn({
   onProductsChange,
   onEdit,
   onManageCategories,
+  onRefresh,
+  refreshing = false,
 }: InventoryColumnProps) {
   const [search, setSearch] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -137,14 +146,15 @@ export default function InventoryColumn({
 
   const groups = groupByCategory(filtered, categories);
 
-  async function quickUpdate(id: string, delta: number) {
-    const product = products.find((p) => p.id === id);
-    if (!product) return;
-    const newQty = Math.max(0, product.quantity + delta * quantityStep(product.quantityUnit));
+  async function setQuantityField(
+    id: string,
+    field: "quantity" | "unitCount",
+    value: number
+  ) {
     const res = await fetch(`/api/products/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quantity: newQty }),
+      body: JSON.stringify({ [field]: value }),
     });
     if (res.ok) {
       const updated = await res.json();
@@ -155,6 +165,15 @@ export default function InventoryColumn({
         )
       );
     }
+  }
+
+  function optimisticQty(id: string, field: "quantity" | "unitCount", value: number) {
+    onProductsChange(
+      sortProductsByCategory(
+        products.map((p) => (p.id === id ? { ...p, [field]: value } : p)),
+        categories
+      )
+    );
   }
 
   async function addProduct(name: string) {
@@ -180,7 +199,9 @@ export default function InventoryColumn({
           quantity: 0,
           category: p.category,
           unitPrice: p.unitPrice,
+          packagePrice: p.packagePrice,
           stockQuantity: p.quantity,
+          stockUnitCount: p.unitCount,
           quantityUnit: p.quantityUnit,
           store: p.store,
         })),
@@ -191,47 +212,73 @@ export default function InventoryColumn({
   }
 
   function renderProductRow(product: Product) {
+    const unitCount = product.unitCount ?? 0;
+    const isKg = product.quantityUnit === "kg";
+    const isEmpty = isKg
+      ? product.quantity === 0 && unitCount === 0
+      : product.quantity === 0;
+    const isLow = isKg
+      ? product.quantity <= 1 && unitCount <= 2
+      : product.quantity <= 2;
+
     return (
       <div
         key={product.id}
         onClick={() => onEdit(product)}
         className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition hover:shadow-md hover:border-primary/30 ${
-          product.isMissing || product.quantity === 0
+          product.isMissing || isEmpty
             ? "bg-orange-50 border-orange-200"
-            : product.quantity <= (product.quantityUnit === "kg" ? 1 : 2)
+            : isLow
               ? "bg-yellow-50 border-yellow-200"
               : "bg-white border-border"
         }`}
       >
-        <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              quickUpdate(product.id, -1);
-            }}
-            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
-          >
-            −
-          </button>
-          <span className="w-14 text-center font-bold text-sm">
-            {formatQuantity(product.quantity, product.quantityUnit)}
-          </span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              quickUpdate(product.id, 1);
-            }}
-            className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold text-sm"
-          >
-            +
-          </button>
+        <div className="flex flex-col gap-1.5 shrink-0 pt-0.5" onClick={(e) => e.stopPropagation()}>
+          {isKg ? (
+            <>
+              <QuantityStepper
+                value={product.quantity}
+                onChange={(v) => optimisticQty(product.id, "quantity", v)}
+                onCommit={(v) => setQuantityField(product.id, "quantity", v)}
+                unit="kg"
+                unitLabel="ק״ג"
+                compact
+                max={50}
+              />
+              <QuantityStepper
+                value={unitCount}
+                onChange={(v) => optimisticQty(product.id, "unitCount", v)}
+                onCommit={(v) => setQuantityField(product.id, "unitCount", v)}
+                unit="piece"
+                unitLabel="יחידות"
+                compact
+                max={500}
+              />
+            </>
+          ) : (
+            <QuantityStepper
+              value={product.quantity}
+              onChange={(v) => optimisticQty(product.id, "quantity", v)}
+              onCommit={(v) => setQuantityField(product.id, "quantity", v)}
+              unit="unit"
+              unitLabel="יחידות"
+              compact
+              max={500}
+            />
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
           <p className="font-medium text-slate-800 break-words leading-snug">
             {product.name}
           </p>
-          {(product.isMissing || product.quantity === 0) && (
+          {isKg && (product.quantity > 0 || unitCount > 0) && (
+            <p className="text-xs text-muted mt-0.5">
+              {formatQuantity(product.quantity, "kg")}
+              {unitCount > 0 && ` · ${formatQuantity(unitCount, "unit")}`}
+            </p>
+          )}
+          {(product.isMissing || isEmpty) && (
             <p className="text-xs text-orange-600 mt-0.5">חסר במלאי</p>
           )}
           {product.store && (
@@ -252,8 +299,8 @@ export default function InventoryColumn({
   }
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-border bg-gradient-to-l from-blue-50 to-white space-y-3">
+    <div className="flex flex-col h-full min-h-0 bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <div className="shrink-0 px-5 py-4 border-b border-border bg-gradient-to-l from-blue-50 to-white space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -262,6 +309,9 @@ export default function InventoryColumn({
             <p className="text-xs text-muted mt-0.5">{products.length} מוצרים</p>
           </div>
           <div className="flex gap-1.5">
+            {onRefresh && (
+              <ColumnRefreshButton onRefresh={onRefresh} refreshing={refreshing} />
+            )}
             <button
               onClick={downloadPDF}
               disabled={downloading || products.length === 0}
@@ -287,9 +337,10 @@ export default function InventoryColumn({
           placeholder="חיפוש במלאי..."
           className="w-full px-3 py-2 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
+        {isHead && <AddProductBar onAdd={addProduct} />}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
         {filtered.length === 0 && (
           <div className="text-center py-12 text-muted">
             <p className="text-sm">{search.trim() ? "לא נמצאו מוצרים" : "אין מוצרים עדיין"}</p>
@@ -307,7 +358,7 @@ export default function InventoryColumn({
         ))}
       </div>
 
-      <div className="p-3 border-t border-border space-y-2">
+      <div className="shrink-0 p-3 border-t border-border bg-white">
         <button
           onClick={downloadPDF}
           disabled={downloading || products.length === 0}
@@ -315,7 +366,6 @@ export default function InventoryColumn({
         >
           {downloading ? "מכין PDF..." : "📄 הורד PDF של המלאי"}
         </button>
-        {isHead && <AddProductBar onAdd={addProduct} />}
       </div>
     </div>
   );

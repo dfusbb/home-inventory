@@ -19,7 +19,7 @@ export async function PATCH(
   const body = await request.json();
 
   if (!isHead) {
-    const allowedKeys = ["quantity", "isMissing"];
+    const allowedKeys = ["quantity", "unitCount", "isMissing"];
     const attempted = Object.keys(body).filter((k) => body[k] !== undefined);
     if (attempted.some((k) => !allowedKeys.includes(k))) {
       return Response.json(
@@ -40,12 +40,15 @@ export async function PATCH(
   const data: {
     name?: string;
     quantity?: number;
+    unitCount?: number | null;
     imageUrl?: string | null;
     hasImage?: boolean;
     isMissing?: boolean;
     category?: string;
     quantityUnit?: string;
     unitPrice?: number | null;
+    packagePrice?: number | null;
+    packageWeight?: number | null;
     store?: string | null;
   } = {};
 
@@ -69,6 +72,14 @@ export async function PATCH(
   }
 
   if (body.quantity !== undefined) data.quantity = Math.max(0, Number(body.quantity));
+  if (body.unitCount !== undefined) {
+    const parsed =
+      body.unitCount === null || body.unitCount === ""
+        ? null
+        : Number(body.unitCount);
+    data.unitCount =
+      parsed === null || Number.isNaN(parsed) ? null : Math.max(0, parsed);
+  }
   if (body.imageUrl !== undefined) {
     data.imageUrl = body.imageUrl;
     data.hasImage = Boolean(body.imageUrl);
@@ -87,6 +98,22 @@ export async function PATCH(
         ? null
         : Number(body.unitPrice);
     data.unitPrice =
+      parsed === null || Number.isNaN(parsed) ? null : Math.max(0, parsed);
+  }
+  if (body.packagePrice !== undefined) {
+    const parsed =
+      body.packagePrice === null || body.packagePrice === ""
+        ? null
+        : Number(body.packagePrice);
+    data.packagePrice =
+      parsed === null || Number.isNaN(parsed) ? null : Math.max(0, parsed);
+  }
+  if (body.packageWeight !== undefined) {
+    const parsed =
+      body.packageWeight === null || body.packageWeight === ""
+        ? null
+        : Number(body.packageWeight);
+    data.packageWeight =
       parsed === null || Number.isNaN(parsed) ? null : Math.max(0, parsed);
   }
   if (body.store !== undefined && isHead) {

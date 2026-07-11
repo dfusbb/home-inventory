@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import ImageEditorModal from "@/components/ImageEditorModal";
 import ProductThumbnail from "@/components/ProductThumbnail";
+import QuantityStepper from "@/components/QuantityStepper";
 import { DEFAULT_CATEGORIES } from "@/lib/categories";
 import type { Product } from "@/components/InventoryColumn";
 import {
@@ -38,6 +39,7 @@ export default function ProductEditModal({
 }: ProductEditModalProps) {
   const [name, setName] = useState(product.name);
   const [quantity, setQuantity] = useState(product.quantity);
+  const [unitCount, setUnitCount] = useState(product.unitCount ?? 0);
   const [category, setCategory] = useState(product.category || "אחר");
   const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>(product.quantityUnit);
   const [unitTouched, setUnitTouched] = useState(
@@ -45,6 +47,12 @@ export default function ProductEditModal({
   );
   const [unitPrice, setUnitPrice] = useState(
     product.unitPrice !== null ? String(product.unitPrice) : ""
+  );
+  const [packagePrice, setPackagePrice] = useState(
+    product.packagePrice !== null ? String(product.packagePrice) : ""
+  );
+  const [packageWeight, setPackageWeight] = useState(
+    product.packageWeight !== null ? String(product.packageWeight) : ""
   );
   const [store, setStore] = useState(product.store || "");
   const [loading, setLoading] = useState(false);
@@ -141,23 +149,48 @@ export default function ProductEditModal({
 
   function handleSave() {
     if (!isHead) {
-      save({ quantity });
+      save(
+        quantityUnit === "kg"
+          ? { quantity, unitCount }
+          : { quantity }
+      );
       return;
     }
 
     const parsedPrice =
       unitPrice.trim() === "" ? null : Number(unitPrice.replace(",", "."));
+    const parsedPackagePrice =
+      packagePrice.trim() === "" ? null : Number(packagePrice.replace(",", "."));
+    const parsedPackageWeight =
+      packageWeight.trim() === "" ? null : Number(packageWeight.replace(",", "."));
     if (parsedPrice !== null && (Number.isNaN(parsedPrice) || parsedPrice < 0)) {
-      setError("מחיר ליחידה לא תקין");
+      setError("מחיר לא תקין");
+      return;
+    }
+    if (
+      parsedPackagePrice !== null &&
+      (Number.isNaN(parsedPackagePrice) || parsedPackagePrice < 0)
+    ) {
+      setError("מחיר לאריזה לא תקין");
+      return;
+    }
+    if (
+      parsedPackageWeight !== null &&
+      (Number.isNaN(parsedPackageWeight) || parsedPackageWeight < 0)
+    ) {
+      setError("משקל אריזה לא תקין");
       return;
     }
 
     save({
       name,
       quantity,
+      unitCount: quantityUnit === "kg" ? unitCount : null,
       category,
       quantityUnit,
       unitPrice: parsedPrice,
+      packagePrice: parsedPackagePrice,
+      packageWeight: parsedPackageWeight,
       store: store || null,
     });
   }
@@ -373,6 +406,45 @@ export default function ProductEditModal({
               />
             </div>
 
+            {quantityUnit === "kg" && (
+              <>
+                <div>
+                  <label className="text-sm font-medium text-slate-600">
+                    מחיר לאריזה / פלטה (₪) — אופציונלי
+                  </label>
+                  <input
+                    type="number"
+                    value={packagePrice}
+                    onChange={(e) => setPackagePrice(e.target.value)}
+                    min={0}
+                    step={0.01}
+                    placeholder="לדוגמה: 45 לפלטת סלמון"
+                    className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <p className="text-xs text-muted mt-1">
+                    לקנייה לפי יחידה/פלטה ברשימת הקניות (למשל פלטה אחת של סלמון)
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-600">
+                    משקל אריזה ממוצע (ק״ג) — אופציונלי
+                  </label>
+                  <input
+                    type="number"
+                    value={packageWeight}
+                    onChange={(e) => setPackageWeight(e.target.value)}
+                    min={0}
+                    step={0.01}
+                    placeholder="לדוגמה: 0.4"
+                    className="w-full mt-1 px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <p className="text-xs text-muted mt-1">
+                    לעדכון המלאי אחרי קנייה לפי אריזה
+                  </p>
+                </div>
+              </>
+            )}
+
             <div>
               <label className="text-sm font-medium text-slate-600">חנות</label>
               <select
@@ -389,36 +461,52 @@ export default function ProductEditModal({
               </>
             )}
 
-            <div>
-              <label className="text-sm font-medium text-slate-600">
-                כמות במלאי ({unitLabel(quantityUnit)})
-              </label>
-              <div className="flex items-center gap-3 mt-1">
-                <button
-                  onClick={() => setQuantity(Math.max(0, quantity - quantityStep(quantityUnit)))}
-                  className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-lg hover:bg-slate-200"
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(0, Number(e.target.value)))}
-                  className="flex-1 text-center px-3 py-2.5 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-primary/30 text-lg font-semibold"
-                  min={0}
-                  step={quantityStep(quantityUnit)}
-                />
-                <button
-                  onClick={() => setQuantity(quantity + quantityStep(quantityUnit))}
-                  className="w-10 h-10 rounded-xl bg-slate-100 font-bold text-lg hover:bg-slate-200"
-                >
-                  +
-                </button>
+            {quantityUnit === "kg" ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-slate-600">מלאי בק״ג</label>
+                  <div className="mt-1 flex justify-center">
+                    <QuantityStepper
+                      value={quantity}
+                      onChange={setQuantity}
+                      unit="kg"
+                      max={50}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-600">מלאי ביחידות</label>
+                  <div className="mt-1 flex justify-center">
+                    <QuantityStepper
+                      value={unitCount}
+                      onChange={setUnitCount}
+                      unit="piece"
+                      max={500}
+                    />
+                  </div>
+                  <p className="text-xs text-muted mt-1 text-center">
+                    לדוגמה: 10 מלפפונים (לא לפי משקל)
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-muted mt-1">
-                יוצג כ־{formatQuantity(quantity, quantityUnit)}
-              </p>
-            </div>
+            ) : (
+              <div>
+                <label className="text-sm font-medium text-slate-600">
+                  כמות במלאי ({unitLabel(quantityUnit)})
+                </label>
+                <div className="mt-1 flex justify-center">
+                  <QuantityStepper
+                    value={quantity}
+                    onChange={setQuantity}
+                    unit="unit"
+                    max={500}
+                  />
+                </div>
+                <p className="text-xs text-muted mt-1 text-center">
+                  יוצג כ־{formatQuantity(quantity, quantityUnit)}
+                </p>
+              </div>
+            )}
 
             {isHead && (
               <>

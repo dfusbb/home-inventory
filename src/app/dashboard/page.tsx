@@ -33,18 +33,23 @@ export default function DashboardPage() {
   const [showStores, setShowStores] = useState(false);
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [stores, setStores] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [mobileTab, setMobileTab] = useState<"inventory" | "shopping" | "trip">("inventory");
 
-  const loadDashboardData = useCallback(async () => {
-    setDataLoading(true);
-    setDataError("");
-    setRecoveryMessage("");
+  const loadDashboardData = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setDataLoading(true);
+      setDataError("");
+      setRecoveryMessage("");
+    }
     try {
-      const res = await fetch("/api/dashboard");
+      const res = await fetch("/api/dashboard", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         let nextProducts = data.products ?? [];
-        if (nextProducts.length === 0) {
+        if (!silent && nextProducts.length === 0) {
           const recoverRes = await fetch("/api/products/recover", { method: "POST" });
           if (recoverRes.ok) {
             const recovered = await recoverRes.json();
@@ -60,8 +65,11 @@ export default function DashboardPage() {
         setShoppingItems(data.shoppingItems ?? []);
         if (data.categories) setCategories(data.categories);
         if (data.stores) setStores(data.stores);
+        setLastSyncedAt(new Date());
         return;
       }
+
+      if (silent) return;
 
       const err = await res.json().catch(() => ({}));
       setDataError(err.error || "שגיאה בטעינת המלאי");
@@ -107,11 +115,20 @@ export default function DashboardPage() {
       }
       if (recovered) setDataError("");
     } catch {
-      setDataError("שגיאת רשת בטעינת הנתונים");
+      if (!silent) setDataError("שגיאת רשת בטעינת הנתונים");
     } finally {
-      setDataLoading(false);
+      if (!silent) setDataLoading(false);
     }
   }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadDashboardData({ silent: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadDashboardData]);
 
   const loadData = useCallback(async () => {
     const meRes = await fetch("/api/auth/me");
@@ -164,6 +181,26 @@ export default function DashboardPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!actorName) return;
+
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
+      loadDashboardData({ silent: true });
+    };
+
+    const intervalId = window.setInterval(poll, 3000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") poll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [actorName, loadDashboardData]);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -254,6 +291,9 @@ export default function DashboardPage() {
                   {isHead && (
                     <span className="mr-1 text-indigo-600"> · ראש משפחה</span>
                   )}
+                  {lastSyncedAt && (
+                    <span className="mr-1 text-green-600"> · מסונכרן</span>
+                  )}
                 </p>
               )}
             </div>
@@ -311,7 +351,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-4 h-[calc(100vh-64px)] md:h-[calc(100vh-72px)]">
+      <main className="max-w-7xl mx-auto p-4 flex flex-col min-h-0 h-[calc(100vh-64px)] md:h-[calc(100vh-72px)]">
         {recoveryMessage && (
           <div className="mb-3 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-700 text-center">
             ✓ {recoveryMessage}
@@ -337,8 +377,8 @@ export default function DashboardPage() {
             </div>
           </div>
         ) : (
-          <>
-        <div className="hidden md:grid md:grid-cols-3 gap-4 h-full">
+          <div className="flex-1 min-h-0 flex flex-col">
+        <div className="hidden md:grid md:grid-cols-3 gap-4 flex-1 min-h-0">
           <InventoryColumn
             products={products}
             categories={categories}
@@ -347,6 +387,8 @@ export default function DashboardPage() {
             onProductsChange={setProducts}
             onEdit={setEditingProduct}
             onManageCategories={() => setShowCategories(true)}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
           />
           <ShoppingColumn
             items={shoppingItems}
@@ -359,6 +401,8 @@ export default function DashboardPage() {
             onProductsChange={setProducts}
             onManageCategories={() => setShowCategories(true)}
             onManageStores={() => setShowStores(true)}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
           />
           <TripColumn
             items={shoppingItems}
@@ -371,10 +415,12 @@ export default function DashboardPage() {
             onItemsChange={setShoppingItems}
             onProductsChange={setProducts}
             onManageStores={() => setShowStores(true)}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
           />
         </div>
 
-        <div className="md:hidden h-full">
+        <div className="md:hidden flex-1 min-h-0">
           {mobileTab === "inventory" && (
             <InventoryColumn
               products={products}
@@ -384,6 +430,8 @@ export default function DashboardPage() {
               onProductsChange={setProducts}
               onEdit={setEditingProduct}
               onManageCategories={() => setShowCategories(true)}
+              onRefresh={handleRefresh}
+              refreshing={refreshing}
             />
           )}
           {mobileTab === "shopping" && (
@@ -398,6 +446,8 @@ export default function DashboardPage() {
               onProductsChange={setProducts}
               onManageCategories={() => setShowCategories(true)}
               onManageStores={() => setShowStores(true)}
+              onRefresh={handleRefresh}
+              refreshing={refreshing}
             />
           )}
           {mobileTab === "trip" && (
@@ -412,10 +462,12 @@ export default function DashboardPage() {
               onItemsChange={setShoppingItems}
               onProductsChange={setProducts}
               onManageStores={() => setShowStores(true)}
+              onRefresh={handleRefresh}
+              refreshing={refreshing}
             />
           )}
         </div>
-          </>
+          </div>
         )}
       </main>
     </div>

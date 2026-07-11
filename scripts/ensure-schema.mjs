@@ -8,6 +8,9 @@ const statements = [
   `ALTER TABLE "ShoppingItem" ADD COLUMN IF NOT EXISTS "quantityUnit" TEXT NOT NULL DEFAULT 'unit'`,
   `ALTER TABLE "Product" ALTER COLUMN "quantity" TYPE double precision USING "quantity"::double precision`,
   `ALTER TABLE "ShoppingItem" ALTER COLUMN "quantity" TYPE double precision USING "quantity"::double precision`,
+  `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "packagePrice" DOUBLE PRECISION`,
+  `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "packageWeight" DOUBLE PRECISION`,
+  `ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "unitCount" DOUBLE PRECISION`,
 ];
 
 try {

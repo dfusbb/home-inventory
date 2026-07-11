@@ -156,6 +156,48 @@ export function groupByCategory<T extends { category: string }>(
   return groups;
 }
 
+export function groupByStore<T extends { store?: string | null }>(
+  items: T[],
+  storeOrder: string[] = []
+): { store: string; items: T[] }[] {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const key = item.store?.trim() || "ללא חנות";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(item);
+  }
+
+  const result: { store: string; items: T[] }[] = [];
+  for (const name of storeOrder) {
+    if (map.has(name)) {
+      result.push({ store: name, items: map.get(name)! });
+      map.delete(name);
+    }
+  }
+
+  const remaining = [...map.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0], "he")
+  );
+  for (const [store, groupItems] of remaining) {
+    result.push({ store, items: groupItems });
+  }
+
+  return result;
+}
+
+export function groupByStoreThenCategory<
+  T extends { store?: string | null; category: string },
+>(
+  items: T[],
+  storeOrder: string[],
+  categoryOrder: readonly string[] = DEFAULT_CATEGORIES
+): { store: string; categories: { category: string; items: T[] }[] }[] {
+  return groupByStore(items, storeOrder).map(({ store, items: storeItems }) => ({
+    store,
+    categories: groupByCategory(storeItems, categoryOrder),
+  }));
+}
+
 export function normalizeProductName(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
 }

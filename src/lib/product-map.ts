@@ -6,6 +6,9 @@ export interface ProductListItem {
   quantity: number;
   quantityUnit: QuantityUnit;
   unitPrice: number | null;
+  packagePrice: number | null;
+  packageWeight: number | null;
+  unitCount: number | null;
   category: string;
   store: string | null;
   hasImage: boolean;
@@ -20,6 +23,9 @@ export function toProductListItem(product: {
   quantity: number | null;
   quantityUnit?: string | null;
   unitPrice?: number | null;
+  packagePrice?: number | null;
+  packageWeight?: number | null;
+  unitCount?: number | null;
   category: string;
   store?: string | null;
   hasImage?: boolean | null;
@@ -34,6 +40,9 @@ export function toProductListItem(product: {
     quantity: Number(product.quantity) || 0,
     quantityUnit: normalizeQuantityUnit(product.quantityUnit),
     unitPrice: product.unitPrice ?? null,
+    packagePrice: product.packagePrice ?? null,
+    packageWeight: product.packageWeight ?? null,
+    unitCount: product.unitCount ?? null,
     category: product.category,
     store: product.store ?? null,
     hasImage: Boolean(product.hasImage ?? product.imageUrl),

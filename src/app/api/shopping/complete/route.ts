@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
 import { toProductListItem, toShoppingItemResponse } from "@/lib/product-map";
+import { inventoryUpdateForPurchase } from "@/lib/shopping-price";
+import { normalizeQuantityUnit } from "@/lib/units";
 
 const shoppingInclude = {
   product: true,
@@ -34,10 +36,19 @@ export async function POST() {
       continue;
     }
 
+    const product = item.product;
+    const update = product
+      ? inventoryUpdateForPurchase(item, {
+          quantityUnit: normalizeQuantityUnit(product.quantityUnit),
+          packageWeight: product.packageWeight,
+        })
+      : { quantity: item.quantity };
+
     await prisma.product.update({
       where: { id: item.productId },
       data: {
-        quantity: { increment: item.quantity },
+        ...(update.quantity !== undefined ? { quantity: { increment: update.quantity } } : {}),
+        ...(update.unitCount !== undefined ? { unitCount: { increment: update.unitCount } } : {}),
         isMissing: false,
         ...(item.store ? { store: item.store } : {}),
       },
@@ -49,11 +60,15 @@ export async function POST() {
     });
 
     updatedInventory += 1;
+    const addedLabel =
+      update.unitCount !== undefined
+        ? `+${update.unitCount} יחידות`
+        : `+${update.quantity ?? item.quantity}`;
     await logActivity(
       householdId,
       actorName,
       "עדכון מלאי מקנייה",
-      `+${item.quantity}`,
+      addedLabel,
       item.name
     );
   }

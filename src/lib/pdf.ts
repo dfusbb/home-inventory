@@ -1,4 +1,4 @@
-import { groupByCategory } from "@/lib/categories";
+import { groupByCategory, groupByStoreThenCategory } from "@/lib/categories";
 import { formatQuantity, normalizeQuantityUnit, priceUnitLabel, type QuantityUnit } from "@/lib/units";
 
 export interface PDFLineItem {
@@ -8,7 +8,9 @@ export interface PDFLineItem {
   category: string;
   store?: string | null;
   unitPrice?: number | null;
+  packagePrice?: number | null;
   stockQuantity?: number;
+  stockUnitCount?: number | null;
 }
 
 export interface PDFOptions {
@@ -28,22 +30,58 @@ const HEBREW_FONT_NAME = "NotoSansHebrew";
 
 let cachedFontBase64: string | null = null;
 
-function formatPrice(price: number | null | undefined): string {
-  if (price === null || price === undefined) return "—";
-  return `₪${price.toFixed(2)}`;
+function normalizePrice(price: unknown): number | null {
+  if (price === null || price === undefined || price === "") return null;
+  const n = Number(price);
+  return Number.isFinite(n) ? n : null;
 }
 
-function formatPriceWithUnit(
-  price: number | null | undefined,
-  unit: QuantityUnit
-): string {
-  if (price === null || price === undefined) return "—";
-  return `${formatPrice(price)} ${priceUnitLabel(unit)}`;
+function formatPrice(price: unknown): string {
+  const n = normalizePrice(price);
+  if (n === null) return "—";
+  return `₪${n.toFixed(2)}`;
 }
 
-function lineTotal(qty: number, price: number | null | undefined): string {
-  if (price === null || price === undefined) return "—";
-  return formatPrice(qty * price);
+function formatPriceWithUnit(price: unknown, unit: QuantityUnit): string {
+  const n = normalizePrice(price);
+  if (n === null) return "—";
+  return `${formatPrice(n)} ${priceUnitLabel(unit)}`;
+}
+
+function formatStockDisplay(item: PDFLineItem): string {
+  const unit = normalizeQuantityUnit(item.quantityUnit);
+  if (unit === "kg") {
+    const parts: string[] = [];
+    if ((item.stockQuantity ?? 0) > 0) {
+      parts.push(formatQuantity(item.stockQuantity ?? 0, "kg"));
+    }
+    if ((item.stockUnitCount ?? 0) > 0) {
+      parts.push(formatQuantity(item.stockUnitCount ?? 0, "unit"));
+    }
+    return parts.length > 0 ? parts.join(" · ") : formatQuantity(0, "kg");
+  }
+  return formatQuantity(item.stockQuantity ?? 0, unit);
+}
+
+function formatItemPriceDisplay(item: PDFLineItem): string {
+  const unit = normalizeQuantityUnit(item.quantityUnit);
+  const unitPrice = normalizePrice(item.unitPrice);
+  const packagePrice = normalizePrice(item.packagePrice);
+
+  if (unit === "kg") {
+    const parts: string[] = [];
+    if (unitPrice !== null) parts.push(`${formatPrice(unitPrice)} לק״ג`);
+    if (packagePrice !== null) parts.push(`${formatPrice(packagePrice)} לאריזה`);
+    return parts.length > 0 ? parts.join(" / ") : "—";
+  }
+
+  return formatPriceWithUnit(unitPrice, unit);
+}
+
+function lineTotal(qty: number, price: unknown): string {
+  const n = normalizePrice(price);
+  if (n === null) return "—";
+  return formatPrice(qty * n);
 }
 
 async function loadHebrewFontBase64(): Promise<string> {
@@ -84,29 +122,6 @@ const tableHeadStyles = {
   fontSize: 10,
 };
 
-function groupByStore<T extends { store?: string | null }>(
-  items: T[],
-  storeOrder: string[] = []
-): { label: string; items: T[] }[] {
-  const map = new Map<string, T[]>();
-  for (const item of items) {
-    const key = item.store?.trim() || "ללא חנות";
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(item);
-  }
-  const result: { label: string; items: T[] }[] = [];
-  for (const name of storeOrder) {
-    if (map.has(name)) {
-      result.push({ label: name, items: map.get(name)! });
-      map.delete(name);
-    }
-  }
-  for (const [label, groupItems] of map) {
-    result.push({ label, items: groupItems });
-  }
-  return result;
-}
-
 export async function generatePDF({
   title,
   familyName,
@@ -144,13 +159,13 @@ export async function generatePDF({
   let totalEstimate = 0;
 
   const head = showStock
-    ? [["#", "מוצר", "במלאי", "מחיר", "קטגוריה"]]
+    ? [["#", "מוצר", "במלאי", "מחיר", "חנות", "קטגוריה"]]
     : [["#", "מוצר", "כמות", "מחיר", "סהכ", "חנות"]];
 
   const renderTable = (tableItems: PDFLineItem[]) => {
     const body = tableItems.map((item) => {
       rowNum += 1;
-      const price = item.unitPrice ?? null;
+      const price = normalizePrice(item.unitPrice);
       const unit = normalizeQuantityUnit(item.quantityUnit);
       if (!showStock && price !== null) totalEstimate += item.quantity * price;
 
@@ -158,8 +173,9 @@ export async function generatePDF({
         return [
           String(rowNum),
           item.name,
-          formatQuantity(item.stockQuantity ?? 0, unit),
-          formatPriceWithUnit(price, unit),
+          formatStockDisplay(item),
+          formatItemPriceDisplay(item),
+          item.store?.trim() || "—",
           item.category,
         ];
       }
@@ -167,7 +183,7 @@ export async function generatePDF({
         String(rowNum),
         item.name,
         formatQuantity(item.quantity, unit),
-        formatPriceWithUnit(price, unit),
+        formatItemPriceDisplay(item),
         lineTotal(item.quantity, price),
         item.store?.trim() || "—",
       ];
@@ -181,17 +197,18 @@ export async function generatePDF({
       headStyles: tableHeadStyles,
       columnStyles: showStock
         ? {
-            0: { halign: "center", cellWidth: 12 },
-            1: { cellWidth: 55 },
-            2: { halign: "center", cellWidth: 18 },
-            3: { halign: "center", cellWidth: 22 },
+            0: { halign: "center", cellWidth: 10 },
+            1: { cellWidth: 42 },
+            2: { halign: "center", cellWidth: 24 },
+            3: { halign: "center", cellWidth: 32 },
             4: { halign: "right", cellWidth: 28 },
+            5: { halign: "right", cellWidth: 24 },
           }
         : {
             0: { halign: "center", cellWidth: 10 },
-            1: { cellWidth: 48 },
-            2: { halign: "center", cellWidth: 16 },
-            3: { halign: "center", cellWidth: 20 },
+            1: { cellWidth: 40 },
+            2: { halign: "center", cellWidth: 18 },
+            3: { halign: "center", cellWidth: 28 },
             4: { halign: "center", cellWidth: 22 },
             5: { halign: "right", cellWidth: 28 },
           },
@@ -203,30 +220,34 @@ export async function generatePDF({
         .lastAutoTable.finalY + 8;
   };
 
-  const sectionHeader = (label: string) => {
+  const sectionHeader = (label: string, level: "store" | "category" | "default" = "default") => {
     if (startY > 260) {
       doc.addPage();
       startY = 20;
     }
     doc.setFont(HEBREW_FONT_NAME);
-    doc.setFontSize(12);
-    doc.setTextColor(37, 99, 235);
+    if (level === "store") {
+      doc.setFontSize(14);
+      doc.setTextColor(22, 101, 52);
+    } else if (level === "category") {
+      doc.setFontSize(11);
+      doc.setTextColor(37, 99, 235);
+    } else {
+      doc.setFontSize(12);
+      doc.setTextColor(37, 99, 235);
+    }
     doc.text(label, 200, startY, { align: "right" });
     doc.setTextColor(0, 0, 0);
-    startY += 7;
+    startY += level === "store" ? 9 : 7;
   };
 
   if (groupBy === "store") {
-    const storeGroups = groupByStore(items, stores);
-    for (const group of storeGroups) {
-      sectionHeader(group.label);
-      const byCat = groupByCategory(
-        group.items.map((i) => ({ ...i, name: i.name })),
-        categories
-      );
-      for (const cat of byCat) {
-        if (byCat.length > 1) sectionHeader(`  ${cat.category}`);
-        renderTable(cat.items);
+    const storeGroups = groupByStoreThenCategory(items, stores, categories);
+    for (const storeGroup of storeGroups) {
+      sectionHeader(`🏪 ${storeGroup.store}`, "store");
+      for (const catGroup of storeGroup.categories) {
+        sectionHeader(catGroup.category, "category");
+        renderTable(catGroup.items);
       }
     }
   } else {

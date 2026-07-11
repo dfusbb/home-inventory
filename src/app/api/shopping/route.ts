@@ -3,6 +3,7 @@ import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
 import { isValidHouseholdStore } from "@/lib/stores-server";
 import { normalizeQuantityUnit } from "@/lib/units";
+import { shoppingItemPrice } from "@/lib/shopping-price";
 import { toShoppingItemResponse } from "@/lib/product-map";
 
 const shoppingInclude = {
@@ -35,13 +36,12 @@ export async function POST(request: Request) {
     store,
     isOneTime,
     updateStockQuantity,
+    updateStockUnitCount,
     quantityUnit,
   } = body;
 
   const qty = Math.max(0.1, Number(quantity) || 1);
-  const resolvedUnit = normalizeQuantityUnit(quantityUnit);
-  const resolvedStore =
-    store?.trim() || null;
+  const resolvedStore = store?.trim() || null;
 
   if (resolvedStore) {
     const valid = await isValidHouseholdStore(session.householdId, resolvedStore);
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       data: {
         name: trimmedName,
         quantity: qty,
-        quantityUnit: resolvedUnit,
+        quantityUnit: normalizeQuantityUnit(quantityUnit),
         store: resolvedStore,
         unitPrice:
           body.unitPrice !== undefined && body.unitPrice !== null && body.unitPrice !== ""
@@ -96,11 +96,30 @@ export async function POST(request: Request) {
     return Response.json({ error: "מוצר לא נמצא במלאי" }, { status: 404 });
   }
 
-  if (updateStockQuantity !== undefined) {
+  const productUnit = normalizeQuantityUnit(product.quantityUnit);
+  const buyUnit =
+    productUnit === "kg"
+      ? normalizeQuantityUnit(quantityUnit ?? productUnit)
+      : "unit";
+  const lineUnitPrice = shoppingItemPrice(
+    { quantityUnit: buyUnit },
+    {
+      quantityUnit: productUnit,
+      unitPrice: product.unitPrice,
+      packagePrice: product.packagePrice,
+    }
+  );
+
+  if (updateStockQuantity !== undefined || updateStockUnitCount !== undefined) {
     await prisma.product.update({
       where: { id: product.id },
       data: {
-        quantity: Math.max(0, Number(updateStockQuantity) || 0),
+        ...(updateStockQuantity !== undefined
+          ? { quantity: Math.max(0, Number(updateStockQuantity) || 0) }
+          : {}),
+        ...(updateStockUnitCount !== undefined
+          ? { unitCount: Math.max(0, Number(updateStockUnitCount) || 0) }
+          : {}),
         store: resolvedStore ?? product.store,
       },
     });
@@ -116,6 +135,7 @@ export async function POST(request: Request) {
       householdId: session.householdId,
       productId: product.id,
       isChecked: false,
+      quantityUnit: buyUnit,
     },
   });
 
@@ -124,7 +144,8 @@ export async function POST(request: Request) {
       where: { id: existingItem.id },
       data: {
         quantity: existingItem.quantity + qty,
-        quantityUnit: product.quantityUnit,
+        quantityUnit: buyUnit,
+        unitPrice: existingItem.unitPrice ?? lineUnitPrice,
         store: resolvedStore ?? existingItem.store,
       },
       include: shoppingInclude,
@@ -145,7 +166,8 @@ export async function POST(request: Request) {
     data: {
       name: product.name,
       quantity: qty,
-      quantityUnit: product.quantityUnit,
+      quantityUnit: buyUnit,
+      unitPrice: lineUnitPrice,
       store: resolvedStore ?? product.store,
       productId: product.id,
       householdId: session.householdId,

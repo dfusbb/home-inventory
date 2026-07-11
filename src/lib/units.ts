@@ -12,6 +12,14 @@ export function saleModeLabel(unit: QuantityUnit): string {
   return unit === "kg" ? "לפי משקל (ק״ג)" : "לפי אריזה / יחידות";
 }
 
+export function buyModeLabel(unit: QuantityUnit): string {
+  return unit === "kg" ? "לפי משקל" : "לפי יחידה / אריזה";
+}
+
+export function packageUnitLabel(): string {
+  return "אריזה / יחידה";
+}
+
 export function priceUnitLabel(unit: QuantityUnit): string {
   return unit === "kg" ? "לק״ג" : "ליחידה";
 }

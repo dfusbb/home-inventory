@@ -5,20 +5,28 @@ import { groupByCategory } from "@/lib/categories";
 import { generateShoppingPDF } from "@/lib/pdf";
 import type { Product } from "@/components/InventoryColumn";
 import AddToShoppingModal from "@/components/AddToShoppingModal";
+import ColumnRefreshButton from "@/components/ColumnRefreshButton";
+import QuantityStepper from "@/components/QuantityStepper";
 import ProductThumbnail from "@/components/ProductThumbnail";
 import {
   formatQuantity,
-  normalizeQuantityUnit,
   priceUnitLabel,
   quantityStep,
   type QuantityUnit,
 } from "@/lib/units";
+import {
+  shoppingItemPrice,
+  shoppingItemPriceLabel,
+  shoppingItemUnit,
+} from "@/lib/shopping-price";
 
 interface ShoppingProduct {
   id: string;
   name: string;
   imageUrl: string | null;
   unitPrice: number | null;
+  packagePrice: number | null;
+  packageWeight: number | null;
   category: string;
   store: string | null;
   quantity: number;
@@ -53,6 +61,8 @@ interface ShoppingColumnProps {
   onProductsChange: (products: Product[]) => void;
   onManageCategories: () => void;
   onManageStores: () => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 function formatPrice(price: number | null | undefined): string {
@@ -61,11 +71,15 @@ function formatPrice(price: number | null | undefined): string {
 }
 
 function itemPrice(item: ShoppingItem): number | null {
-  return item.product?.unitPrice ?? item.unitPrice ?? null;
+  return shoppingItemPrice(item, item.product);
 }
 
 function itemUnit(item: ShoppingItem): QuantityUnit {
-  return item.product?.quantityUnit ?? normalizeQuantityUnit(item.quantityUnit);
+  return shoppingItemUnit(item, item.product);
+}
+
+function itemPriceLabel(item: ShoppingItem): string {
+  return shoppingItemPriceLabel(item, item.product);
 }
 
 export default function ShoppingColumn({
@@ -79,6 +93,8 @@ export default function ShoppingColumn({
   onProductsChange,
   onManageCategories,
   onManageStores,
+  onRefresh,
+  refreshing = false,
 }: ShoppingColumnProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [showOneTime, setShowOneTime] = useState(false);
@@ -136,7 +152,14 @@ export default function ShoppingColumn({
 
   function getWarnings(product: Product): string[] {
     const warnings: string[] = [];
-    if (product.quantity > 0) {
+    if (product.quantityUnit === "kg") {
+      const parts: string[] = [];
+      if (product.quantity > 0) parts.push(formatQuantity(product.quantity, "kg"));
+      if ((product.unitCount ?? 0) > 0) {
+        parts.push(formatQuantity(product.unitCount ?? 0, "unit"));
+      }
+      if (parts.length > 0) warnings.push(`קיים במלאי: ${parts.join(" · ")}`);
+    } else if (product.quantity > 0) {
       warnings.push(`קיים במלאי: ${formatQuantity(product.quantity, product.quantityUnit)}`);
     }
     const recent = items.find((i) => i.productId === product.id && i.isChecked);
@@ -144,8 +167,13 @@ export default function ShoppingColumn({
     return warnings;
   }
 
-  function getExistingListQty(productId: string): number | undefined {
-    const existing = activeItems.find((i) => i.productId === productId);
+  function getExistingListQty(
+    productId: string,
+    unit: QuantityUnit
+  ): number | undefined {
+    const existing = activeItems.find(
+      (i) => i.productId === productId && itemUnit(i) === unit
+    );
     return existing?.quantity;
   }
 
@@ -153,13 +181,21 @@ export default function ShoppingColumn({
     setAddModalProduct(product);
   }
 
-  function handleAdded(item: ShoppingItem, updatedProduct?: Product) {
-    const existing = items.find((i) => i.id === item.id);
-    if (existing) {
-      onItemsChange(items.map((i) => (i.id === item.id ? (item as ShoppingItem) : i)));
-    } else {
-      onItemsChange([item as ShoppingItem, ...items]);
+  function handleAdded(
+    newItems: ShoppingItem | ShoppingItem[] | unknown | unknown[],
+    updatedProduct?: Product
+  ) {
+    const list = (Array.isArray(newItems) ? newItems : [newItems]) as ShoppingItem[];
+    let next = [...items];
+    for (const item of list) {
+      const existing = next.find((i) => i.id === item.id);
+      if (existing) {
+        next = next.map((i) => (i.id === item.id ? item : i));
+      } else {
+        next = [item, ...next];
+      }
     }
+    onItemsChange(next);
     if (updatedProduct) {
       onProductsChange(
         products.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
@@ -236,6 +272,7 @@ export default function ShoppingColumn({
           category: item.product?.category ?? "חד-פעמי",
           store: item.store ?? item.product?.store,
           unitPrice: itemPrice(item),
+          packagePrice: item.product?.packagePrice ?? null,
         })),
       });
     } finally {
@@ -246,7 +283,6 @@ export default function ShoppingColumn({
   function renderItemRow(item: ShoppingItem) {
     const price = itemPrice(item);
     const unit = itemUnit(item);
-    const step = quantityStep(unit);
     return (
       <div
         key={item.id}
@@ -280,7 +316,7 @@ export default function ShoppingColumn({
           )}
           <p className="text-sm font-semibold text-slate-600 mt-1">
             {formatPrice(price)}
-            {price !== null && ` ${priceUnitLabel(unit)}`}
+            {price !== null && ` ${itemPriceLabel(item)}`}
             {price !== null && (
               <span className="text-xs text-muted font-normal mr-1">
                 {" "}
@@ -289,22 +325,17 @@ export default function ShoppingColumn({
             )}
           </p>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => updateQuantity(item.id, Math.max(step, item.quantity - step))}
-            className="w-7 h-7 rounded-lg bg-slate-100 font-bold text-sm"
-          >
-            −
-          </button>
-          <span className="w-14 text-center text-xs font-semibold">
-            {formatQuantity(item.quantity, unit)}
+        <div className="flex flex-col items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <QuantityStepper
+            value={item.quantity}
+            onChange={(v) => updateQuantity(item.id, v)}
+            unit={unit}
+            compact
+            max={unit === "kg" ? 50 : 500}
+          />
+          <span className="text-[10px] text-muted">
+            {unit === "kg" ? "ק״ג" : "יחידות"}
           </span>
-          <button
-            onClick={() => updateQuantity(item.id, item.quantity + step)}
-            className="w-7 h-7 rounded-lg bg-slate-100 font-bold text-sm"
-          >
-            +
-          </button>
         </div>
         <button
           onClick={() => removeItem(item.id)}
@@ -323,11 +354,9 @@ export default function ShoppingColumn({
           product={addModalProduct}
           stores={stores}
           warnings={getWarnings(addModalProduct)}
-          existingListQty={getExistingListQty(addModalProduct.id)}
+          getExistingListQty={(unit) => getExistingListQty(addModalProduct.id, unit)}
           onClose={() => setAddModalProduct(null)}
-          onAdded={(item, updated) =>
-            handleAdded(item as ShoppingItem, updated)
-          }
+          onAdded={(items, updated) => handleAdded(items, updated)}
         />
       )}
 
@@ -398,18 +427,16 @@ export default function ShoppingColumn({
                 className="w-full px-3 py-2.5 rounded-xl border border-border text-sm"
                 autoFocus
               />
-              <div className="flex items-center gap-2">
-                <span className="text-sm">כמות:</span>
-                <button onClick={() => setOneTimeQty(Math.max(quantityStep(oneTimeUnit), oneTimeQty - quantityStep(oneTimeUnit)))} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">−</button>
-                <input
-                  type="number"
-                  value={oneTimeQty}
-                  onChange={(e) => setOneTimeQty(Math.max(quantityStep(oneTimeUnit), Number(e.target.value)))}
-                  className="w-20 text-center px-2 py-1.5 rounded-lg border border-border font-bold"
-                  min={quantityStep(oneTimeUnit)}
-                  step={quantityStep(oneTimeUnit)}
-                />
-                <button onClick={() => setOneTimeQty(oneTimeQty + quantityStep(oneTimeUnit))} className="w-8 h-8 rounded-lg bg-slate-100 font-bold">+</button>
+              <div>
+                <label className="text-sm font-medium text-slate-600">כמות</label>
+                <div className="mt-1 flex justify-center">
+                  <QuantityStepper
+                    value={oneTimeQty}
+                    onChange={setOneTimeQty}
+                    unit={oneTimeUnit}
+                    max={oneTimeUnit === "kg" ? 50 : 500}
+                  />
+                </div>
               </div>
               <select
                 value={oneTimeUnit}
@@ -463,6 +490,9 @@ export default function ShoppingColumn({
               <p className="text-xs text-muted">{activeItems.length} פריטים</p>
             </div>
             <div className="flex gap-1">
+              {onRefresh && (
+                <ColumnRefreshButton onRefresh={onRefresh} refreshing={refreshing} />
+              )}
               <button
                 onClick={downloadPDF}
                 disabled={downloading || activeItems.length === 0}
