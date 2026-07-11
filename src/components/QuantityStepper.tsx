@@ -68,12 +68,12 @@ function QuantityScrollPicker({
           בחרו כמות{unitLabel ? ` (${unitLabel})` : ""}
         </p>
         <p className="text-center text-xs text-muted mb-3">גללו עד המספר הרצוי</p>
-        <div className="relative">
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-11 rounded-lg bg-orange-50 border border-orange-200 z-10" />
+        <div className="relative h-56">
+          <div className="pointer-events-none absolute inset-x-3 top-1/2 -translate-y-1/2 h-11 rounded-lg border-2 border-orange-300 z-10" />
           <div
             ref={listRef}
             onScroll={handleScroll}
-            className="h-56 overflow-y-auto scroll-smooth snap-y snap-mandatory"
+            className="h-full overflow-y-auto scroll-smooth snap-y snap-mandatory relative z-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ scrollPaddingBlock: `${itemHeight * 2}px` }}
           >
             <div style={{ height: itemHeight * 2 }} />
@@ -82,16 +82,22 @@ function QuantityScrollPicker({
                 key={opt}
                 type="button"
                 onClick={() => onSelect(opt)}
-                className={`w-full snap-center flex items-center justify-center font-bold text-lg ${
-                  Math.abs(opt - value) < step / 2 ? "text-orange-700" : "text-slate-500"
-                }`}
+                className="w-full snap-center flex items-center justify-center font-bold text-lg text-transparent select-none"
                 style={{ height: itemHeight }}
+                aria-hidden
               >
                 {formatValue(opt, step)}
               </button>
             ))}
             <div style={{ height: itemHeight * 2 }} />
           </div>
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-11 flex items-center justify-center z-20">
+            <span className="text-2xl font-bold text-orange-700">
+              {formatValue(value, step)}
+            </span>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-white to-transparent z-10" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white to-transparent z-10" />
         </div>
         <button
           type="button"
