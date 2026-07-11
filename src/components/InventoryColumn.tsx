@@ -262,9 +262,9 @@ export default function InventoryColumn({
               onClick={downloadPDF}
               disabled={downloading || products.length === 0}
               className="px-2.5 py-1.5 rounded-lg bg-white border border-border text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              title="הורד PDF"
+              title="הורד PDF של המלאי"
             >
-              {downloading ? "..." : "📄 PDF"}
+              {downloading ? "מכין..." : "📄 PDF"}
             </button>
             {isHead && (
               <button
@@ -283,7 +283,6 @@ export default function InventoryColumn({
           placeholder="חיפוש במלאי..."
           className="w-full px-3 py-2 rounded-xl border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
-        {isHead && <AddProductBar onAdd={addProduct} />}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -304,11 +303,16 @@ export default function InventoryColumn({
         ))}
       </div>
 
-      {isHead && (
-        <div className="p-3 border-t border-border">
-          <AddProductBar onAdd={addProduct} />
-        </div>
-      )}
+      <div className="p-3 border-t border-border space-y-2">
+        <button
+          onClick={downloadPDF}
+          disabled={downloading || products.length === 0}
+          className="w-full py-2.5 rounded-xl bg-slate-100 text-slate-700 font-medium text-sm hover:bg-slate-200 disabled:opacity-50 transition flex items-center justify-center gap-2"
+        >
+          {downloading ? "מכין PDF..." : "📄 הורד PDF של המלאי"}
+        </button>
+        {isHead && <AddProductBar onAdd={addProduct} />}
+      </div>
     </div>
   );
 }
