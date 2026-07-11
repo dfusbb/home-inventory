@@ -10,7 +10,7 @@ import {
   isValidHouseholdCategory,
 } from "@/lib/categories-server";
 import { defaultUnitForCategory, normalizeQuantityUnit } from "@/lib/units";
-import { productListSelect } from "@/lib/product-select";
+import { toProductListItem } from "@/lib/product-map";
 
 export async function GET() {
   const result = await requireVerifiedActor();
@@ -19,12 +19,16 @@ export async function GET() {
   const [products, categoryOrder] = await Promise.all([
     prisma.product.findMany({
       where: { householdId: result.session.householdId },
-      select: productListSelect,
     }),
     getHouseholdCategoryNames(result.session.householdId),
   ]);
 
-  return Response.json(sortProductsByCategory(products, categoryOrder));
+  return Response.json(
+    sortProductsByCategory(
+      products.map(toProductListItem),
+      categoryOrder
+    )
+  );
 }
 
 export async function POST(request: Request) {
@@ -71,7 +75,6 @@ export async function POST(request: Request) {
           : null,
       householdId: result.session.householdId,
     },
-    select: productListSelect,
   });
 
   const { logActivity } = await import("@/lib/activity");
@@ -83,5 +86,5 @@ export async function POST(request: Request) {
     product.name
   );
 
-  return Response.json(product, { status: 201 });
+  return Response.json(toProductListItem(product), { status: 201 });
 }

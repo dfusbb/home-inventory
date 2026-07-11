@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState("");
   const [familyName, setFamilyName] = useState("");
   const [actorName, setActorName] = useState<string | null>(null);
   const [isHead, setIsHead] = useState(false);
@@ -35,14 +36,48 @@ export default function DashboardPage() {
 
   const loadDashboardData = useCallback(async () => {
     setDataLoading(true);
+    setDataError("");
     try {
       const res = await fetch("/api/dashboard");
-      if (!res.ok) return;
-      const data = await res.json();
-      setProducts(data.products ?? []);
-      setShoppingItems(data.shoppingItems ?? []);
-      if (data.categories) setCategories(data.categories);
-      if (data.stores) setStores(data.stores);
+      if (res.ok) {
+        const data = await res.json();
+        setProducts(data.products ?? []);
+        setShoppingItems(data.shoppingItems ?? []);
+        if (data.categories) setCategories(data.categories);
+        if (data.stores) setStores(data.stores);
+        return;
+      }
+
+      const err = await res.json().catch(() => ({}));
+      setDataError(err.error || "שגיאה בטעינת המלאי");
+
+      const [productsRes, shoppingRes, categoriesRes, storesRes] = await Promise.all([
+        fetch("/api/products"),
+        fetch("/api/shopping"),
+        fetch("/api/categories"),
+        fetch("/api/stores"),
+      ]);
+
+      let recovered = false;
+      if (productsRes.ok) {
+        setProducts(await productsRes.json());
+        recovered = true;
+      }
+      if (shoppingRes.ok) {
+        setShoppingItems(await shoppingRes.json());
+        recovered = true;
+      }
+      if (categoriesRes.ok) {
+        const data = await categoriesRes.json();
+        setCategories(data.categories);
+      }
+      if (storesRes.ok) {
+        const data = await storesRes.json();
+        setStores(data.stores);
+      }
+      if (recovered) setDataError("");
+    } catch {
+      setDataError("שגיאת רשת בטעינת הנתונים");
     } finally {
       setDataLoading(false);
     }
@@ -247,6 +282,14 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 h-[calc(100vh-64px)] md:h-[calc(100vh-72px)]">
+        {dataError && (
+          <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 text-center">
+            {dataError}
+            <p className="text-xs mt-1 text-red-600">
+              המוצרים כנראה לא נמחקו — נסו לרענן את האפליקציה.
+            </p>
+          </div>
+        )}
         {!actorName ? (
           <div className="flex items-center justify-center h-full text-muted text-sm">
             הקלידו שם רשום כדי להמשיך

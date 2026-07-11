@@ -3,12 +3,10 @@ import { requireVerifiedActor } from "@/lib/actor";
 import { sortProductsByCategory } from "@/lib/categories";
 import { getHouseholdCategoryNames } from "@/lib/categories-server";
 import { getHouseholdStoreNames } from "@/lib/stores-server";
-import { productListSelect } from "@/lib/product-select";
+import { toProductListItem, toShoppingItemResponse } from "@/lib/product-map";
 
 const shoppingInclude = {
-  product: {
-    select: productListSelect,
-  },
+  product: true,
 } as const;
 
 export async function GET() {
@@ -17,24 +15,38 @@ export async function GET() {
 
   const householdId = result.session.householdId;
 
-  const [products, shoppingItems, categories, stores] = await Promise.all([
-    prisma.product.findMany({
-      where: { householdId },
-      select: productListSelect,
-    }),
-    prisma.shoppingItem.findMany({
-      where: { householdId },
-      include: shoppingInclude,
-      orderBy: [{ isChecked: "asc" }, { createdAt: "desc" }],
-    }),
-    getHouseholdCategoryNames(householdId),
-    getHouseholdStoreNames(householdId),
-  ]);
+  try {
+    const [rawProducts, shoppingItems, categories, stores] = await Promise.all([
+      prisma.product.findMany({
+        where: { householdId },
+      }),
+      prisma.shoppingItem.findMany({
+        where: { householdId },
+        include: shoppingInclude,
+        orderBy: [{ isChecked: "asc" }, { createdAt: "desc" }],
+      }),
+      getHouseholdCategoryNames(householdId),
+      getHouseholdStoreNames(householdId),
+    ]);
 
-  return Response.json({
-    products: sortProductsByCategory(products, categories),
-    shoppingItems,
-    categories,
-    stores,
-  });
+    const products = rawProducts.map(toProductListItem);
+    const normalizedShoppingItems = shoppingItems.map(toShoppingItemResponse);
+
+    return Response.json({
+      products: sortProductsByCategory(products, categories),
+      shoppingItems: normalizedShoppingItems,
+      categories,
+      stores,
+    });
+  } catch (error) {
+    console.error("Dashboard API error:", error);
+    return Response.json(
+      {
+        error: "שגיאה בטעינת נתונים מהמסד",
+        details:
+          error instanceof Error ? error.message : "Unknown database error",
+      },
+      { status: 500 }
+    );
+  }
 }

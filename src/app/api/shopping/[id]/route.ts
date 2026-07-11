@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
 import { normalizeQuantityUnit } from "@/lib/units";
-import { productListSelect } from "@/lib/product-select";
+import { toShoppingItemResponse } from "@/lib/product-map";
 
 export async function PATCH(
   request: Request,
@@ -34,9 +34,7 @@ export async function PATCH(
       store: body.store !== undefined ? (body.store || null) : undefined,
     },
     include: {
-      product: {
-        select: productListSelect,
-      },
+      product: true,
     },
   });
 
@@ -50,7 +48,7 @@ export async function PATCH(
     );
   }
 
-  return Response.json(item);
+  return Response.json(toShoppingItemResponse(item));
 }
 
 export async function DELETE(

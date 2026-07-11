@@ -5,7 +5,7 @@ import { normalizeProductName } from "@/lib/categories";
 import { isValidHouseholdCategory } from "@/lib/categories-server";
 import { isValidHouseholdStore } from "@/lib/stores-server";
 import { normalizeQuantityUnit } from "@/lib/units";
-import { productListSelect } from "@/lib/product-select";
+import { toProductListItem } from "@/lib/product-map";
 
 export async function PATCH(
   request: Request,
@@ -99,7 +99,6 @@ export async function PATCH(
   const product = await prisma.product.update({
     where: { id },
     data,
-    select: productListSelect,
   });
 
   let action = "עדכון מוצר";
@@ -168,7 +167,7 @@ export async function PATCH(
     });
   }
 
-  return Response.json(product);
+  return Response.json(toProductListItem(product));
 }
 
 export async function DELETE(

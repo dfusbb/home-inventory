@@ -3,12 +3,10 @@ import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
 import { isValidHouseholdStore } from "@/lib/stores-server";
 import { normalizeQuantityUnit } from "@/lib/units";
-import { productListSelect } from "@/lib/product-select";
+import { toShoppingItemResponse } from "@/lib/product-map";
 
 const shoppingInclude = {
-  product: {
-    select: productListSelect,
-  },
+  product: true,
 } as const;
 
 export async function GET() {
@@ -21,7 +19,7 @@ export async function GET() {
     orderBy: [{ isChecked: "asc" }, { createdAt: "desc" }],
   });
 
-  return Response.json(items);
+  return Response.json(items.map(toShoppingItemResponse));
 }
 
 export async function POST(request: Request) {
@@ -83,7 +81,7 @@ export async function POST(request: Request) {
       trimmedName
     );
 
-    return Response.json(item, { status: 201 });
+    return Response.json(toShoppingItemResponse(item), { status: 201 });
   }
 
   if (!productId) {
@@ -140,7 +138,7 @@ export async function POST(request: Request) {
       item.name
     );
 
-    return Response.json(item);
+    return Response.json(toShoppingItemResponse(item));
   }
 
   const item = await prisma.shoppingItem.create({
@@ -164,5 +162,5 @@ export async function POST(request: Request) {
     item.name
   );
 
-  return Response.json(item, { status: 201 });
+  return Response.json(toShoppingItemResponse(item), { status: 201 });
 }

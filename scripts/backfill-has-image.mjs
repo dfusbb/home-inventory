@@ -11,6 +11,11 @@ try {
       AND "hasImage" = false
   `;
   console.log(`Backfilled hasImage on ${updated} products`);
+} catch (error) {
+  console.warn(
+    "Backfill skipped:",
+    error instanceof Error ? error.message : error
+  );
 } finally {
   await prisma.$disconnect();
 }

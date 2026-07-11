@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor, headOnlyError } from "@/lib/actor";
-import { productListSelect } from "@/lib/product-select";
+import { toProductListItem, toShoppingItemResponse } from "@/lib/product-map";
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
@@ -18,7 +18,7 @@ export async function GET(
     select: { imageUrl: true, hasImage: true },
   });
 
-  if (!product?.hasImage || !product.imageUrl) {
+  if (!product?.imageUrl) {
     return Response.json({ imageUrl: null });
   }
 
@@ -66,7 +66,6 @@ export async function POST(
   const product = await prisma.product.update({
     where: { id },
     data: { imageUrl, hasImage: true },
-    select: productListSelect,
   });
 
   await logActivity(
@@ -77,5 +76,5 @@ export async function POST(
     product.name
   );
 
-  return Response.json(product);
+  return Response.json(toProductListItem(product));
 }

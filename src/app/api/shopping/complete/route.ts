@@ -1,13 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { requireVerifiedActor } from "@/lib/actor";
-
-import { productListSelect } from "@/lib/product-select";
+import { toProductListItem, toShoppingItemResponse } from "@/lib/product-map";
 
 const shoppingInclude = {
-  product: {
-    select: productListSelect,
-  },
+  product: true,
 } as const;
 
 export async function POST() {
@@ -74,15 +71,14 @@ export async function POST() {
     }),
     prisma.product.findMany({
       where: { householdId },
-      select: productListSelect,
     }),
   ]);
 
   return Response.json({
     success: true,
     updatedInventory,
-    items,
-    products,
+    items: items.map(toShoppingItemResponse),
+    products: products.map(toProductListItem),
     message:
       updatedInventory > 0
         ? `עודכנו ${updatedInventory} פריטים במלאי`
