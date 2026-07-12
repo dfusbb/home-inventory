@@ -1,12 +1,17 @@
 export function getDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL ?? "";
+  let url = process.env.DATABASE_URL ?? "";
   if (!url) return url;
+
+  url = url
+    .replace(/[?&]channel_binding=require/g, "")
+    .replace(/\?&/, "?")
+    .replace(/\?$/, "");
 
   if (
     (url.startsWith("postgresql://") || url.startsWith("postgres://")) &&
     !url.includes("sslmode=")
   ) {
-    return `${url}${url.includes("?") ? "&" : "?"}sslmode=require`;
+    url = `${url}${url.includes("?") ? "&" : "?"}sslmode=require`;
   }
 
   return url;
