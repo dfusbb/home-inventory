@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-function run(command, args, env = process.env) {
+function run(command, args, env = process.env, optional = false) {
   console.log(`> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     stdio: "inherit",
@@ -8,6 +8,10 @@ function run(command, args, env = process.env) {
     env,
   });
   if (result.status !== 0) {
+    if (optional) {
+      console.warn(`⚠️ Skipped optional step: ${command} ${args.join(" ")}`);
+      return;
+    }
     process.exit(result.status ?? 1);
   }
 }
@@ -21,13 +25,12 @@ function normalizeDatabaseUrl(url) {
 }
 
 const dbUrl = process.env.DATABASE_URL ?? "";
-const directDbUrl = normalizeDatabaseUrl(dbUrl);
 
 if (!dbUrl) {
   console.error(
     "\n❌ חסר DATABASE_URL ב-Netlify.\n" +
-      "הוסיפו ב-Site configuration → Environment variables\n" +
-      "ובחרו Scope: All scopes (או Builds + Functions)\n"
+      "הוסיפו ב-Project configuration → Environment variables\n" +
+      "ובחרו Scope: All scopes\n"
   );
   process.exit(1);
 }
@@ -43,19 +46,18 @@ if (!dbUrl.startsWith("postgresql://") && !dbUrl.startsWith("postgres://")) {
 
 if (!process.env.JWT_SECRET) {
   console.warn(
-    "\n⚠️ JWT_SECRET חסר בזמן build – הבנייה תמשיך, אבל התחברות תיכשל עד שתגדירו אותו ב-Netlify (All scopes).\n"
+    "\n⚠️ JWT_SECRET חסר – הוסיפו ב-Netlify (All scopes) כדי שההתחברות תעבוד.\n"
   );
 }
 
 const buildEnv = {
   ...process.env,
-  DATABASE_URL: directDbUrl,
+  DATABASE_URL: normalizeDatabaseUrl(dbUrl),
 };
 
-console.log("Using direct Neon connection for schema sync...");
-
+console.log("Syncing database schema (optional)...");
 run("npx", ["prisma", "generate"], buildEnv);
-run("npx", ["prisma", "db", "push", "--accept-data-loss"], buildEnv);
-run("node", ["scripts/ensure-schema.mjs"], buildEnv);
-run("node", ["scripts/backfill-has-image.mjs"], buildEnv);
+run("npx", ["prisma", "db", "push", "--accept-data-loss"], buildEnv, true);
+run("node", ["scripts/ensure-schema.mjs"], buildEnv, true);
+run("node", ["scripts/backfill-has-image.mjs"], buildEnv, true);
 run("npm", ["run", "build"], buildEnv);
