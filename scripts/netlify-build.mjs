@@ -1,17 +1,27 @@
 import { spawnSync } from "node:child_process";
 
-function run(command, args) {
+function run(command, args, env = process.env) {
   console.log(`> ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     stdio: "inherit",
     shell: process.platform === "win32",
+    env,
   });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
 }
 
+function normalizeDatabaseUrl(url) {
+  return url
+    .replace("-pooler.", ".")
+    .replace(/[?&]channel_binding=require/g, "")
+    .replace(/\?&/, "?")
+    .replace(/\?$/, "");
+}
+
 const dbUrl = process.env.DATABASE_URL ?? "";
+const directDbUrl = normalizeDatabaseUrl(dbUrl);
 
 if (!dbUrl) {
   console.error(
@@ -37,8 +47,15 @@ if (!process.env.JWT_SECRET) {
   );
 }
 
-run("npx", ["prisma", "generate"]);
-run("npx", ["prisma", "db", "push", "--accept-data-loss"]);
-run("node", ["scripts/ensure-schema.mjs"]);
-run("node", ["scripts/backfill-has-image.mjs"]);
-run("npm", ["run", "build"]);
+const buildEnv = {
+  ...process.env,
+  DATABASE_URL: directDbUrl,
+};
+
+console.log("Using direct Neon connection for schema sync...");
+
+run("npx", ["prisma", "generate"], buildEnv);
+run("npx", ["prisma", "db", "push", "--accept-data-loss"], buildEnv);
+run("node", ["scripts/ensure-schema.mjs"], buildEnv);
+run("node", ["scripts/backfill-has-image.mjs"], buildEnv);
+run("npm", ["run", "build"], buildEnv);
