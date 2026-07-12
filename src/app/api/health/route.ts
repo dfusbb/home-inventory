@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { validateServerEnv } from "@/lib/server-env";
 
 export async function GET() {
+  const envCheck = validateServerEnv();
   const checks = {
     databaseUrl: Boolean(process.env.DATABASE_URL),
     databaseProtocolOk:
@@ -12,6 +14,17 @@ export async function GET() {
     error: null as string | null,
   };
 
+  if (!envCheck.ok) {
+    return Response.json(
+      {
+        ok: false,
+        checks,
+        error: envCheck.error,
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     await prisma.$queryRaw`SELECT 1`;
     checks.database = true;
@@ -19,21 +32,12 @@ export async function GET() {
     checks.error = error instanceof Error ? error.message : "Database connection failed";
   }
 
-  const ok =
-    checks.databaseUrl &&
-    checks.databaseProtocolOk &&
-    checks.jwtSecret &&
-    checks.database;
+  const ok = checks.database;
 
   return Response.json(
     {
       ok,
-      checks: {
-        databaseUrl: checks.databaseUrl,
-        databaseProtocolOk: checks.databaseProtocolOk,
-        jwtSecret: checks.jwtSecret,
-        database: checks.database,
-      },
+      checks,
       error: checks.error,
     },
     { status: ok ? 200 : 503 }

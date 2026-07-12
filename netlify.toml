@@ -1,5 +1,5 @@
 [build]
-  command = "npx prisma generate && npx prisma db push && node scripts/ensure-schema.mjs && node scripts/backfill-has-image.mjs && npm run build"
+  command = "node scripts/netlify-build.mjs"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
