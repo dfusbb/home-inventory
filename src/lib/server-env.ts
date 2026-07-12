@@ -2,20 +2,14 @@ export function getDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "";
   if (!url) return url;
 
-  let normalized = url
-    .replace("-pooler.", ".")
-    .replace(/[?&]channel_binding=require/g, "")
-    .replace(/\?&/, "?")
-    .replace(/\?$/, "");
-
   if (
-    (normalized.startsWith("postgresql://") || normalized.startsWith("postgres://")) &&
-    !normalized.includes("sslmode=")
+    (url.startsWith("postgresql://") || url.startsWith("postgres://")) &&
+    !url.includes("sslmode=")
   ) {
-    normalized = `${normalized}${normalized.includes("?") ? "&" : "?"}sslmode=require`;
+    return `${url}${url.includes("?") ? "&" : "?"}sslmode=require`;
   }
 
-  return normalized;
+  return url;
 }
 
 export function validateServerEnv():
