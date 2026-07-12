@@ -45,6 +45,29 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Login error:", error);
+
+    if (!process.env.JWT_SECRET) {
+      return Response.json(
+        { error: "השרת לא מוגדר: חסר JWT_SECRET בענן" },
+        { status: 500 }
+      );
+    }
+
+    if (!process.env.DATABASE_URL) {
+      return Response.json(
+        { error: "השרת לא מוגדר: חסר DATABASE_URL בענן" },
+        { status: 500 }
+      );
+    }
+
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("postgresql://") || message.includes("postgres://")) {
+      return Response.json(
+        { error: "בעיה בחיבור למסד הנתונים. בדקו את DATABASE_URL ב-Netlify" },
+        { status: 500 }
+      );
+    }
+
     return Response.json({ error: "שגיאה בהתחברות" }, { status: 500 });
   }
 }
