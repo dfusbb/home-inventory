@@ -32,11 +32,9 @@ if (!dbUrl.startsWith("postgresql://") && !dbUrl.startsWith("postgres://")) {
 }
 
 if (!process.env.JWT_SECRET) {
-  console.error(
-    "\n❌ חסר JWT_SECRET ב-Netlify.\n" +
-      "הוסיפו מחרוזת סודית ארוכה עם Scope: All scopes\n"
+  console.warn(
+    "\n⚠️ JWT_SECRET חסר בזמן build – הבנייה תמשיך, אבל התחברות תיכשל עד שתגדירו אותו ב-Netlify (All scopes).\n"
   );
-  process.exit(1);
 }
 
 run("npx", ["prisma", "generate"]);
