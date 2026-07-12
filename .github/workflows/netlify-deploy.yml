@@ -1,0 +1,53 @@
+# Add these secrets in GitHub: Settings -> Secrets and variables -> Actions
+
+name: Deploy to Netlify
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: netlify-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: node scripts/netlify-build.mjs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_FAMILY_NAME: ${{ secrets.ADMIN_FAMILY_NAME || 'admin' }}
+          ADMIN_ADDRESS: ${{ secrets.ADMIN_ADDRESS || 'admin' }}
+          ADMIN_CODE: ${{ secrets.ADMIN_CODE || '1234' }}
+
+      - name: Deploy to Netlify
+        id: netlify
+        uses: nwtgck/actions-netlify@v3.0
+        with:
+          publish-dir: ".next"
+          production-branch: main
+          production-deploy: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: "GitHub Actions deploy"
+          enable-pull-request-comment: false
+          enable-commit-comment: false
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+      - name: Deploy URL
+        run: echo "Live at ${{ steps.netlify.outputs.deploy-url }}"

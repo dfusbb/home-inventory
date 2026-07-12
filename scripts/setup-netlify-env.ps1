@@ -6,15 +6,7 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $EnvFile = Join-Path $ProjectRoot ".env.netlify"
 
 if (-not (Test-Path $EnvFile)) {
-  Write-Host "יוצר קובץ .env.netlify..." -ForegroundColor Yellow
-  @"
-DATABASE_URL=
-JWT_SECRET=home-inventory-jwt-secret-2026-change-me
-ADMIN_FAMILY_NAME=admin
-ADMIN_ADDRESS=admin
-ADMIN_CODE=1234
-"@ | Set-Content -Path $EnvFile -Encoding UTF8
-  Write-Host "ערכו את $EnvFile והדביקו את DATABASE_URL מ-Neon, ואז הריצו שוב." -ForegroundColor Red
+  Write-Host "Missing .env.netlify - create it with DATABASE_URL from Neon" -ForegroundColor Red
   exit 1
 }
 
@@ -26,19 +18,19 @@ Get-Content $EnvFile | ForEach-Object {
 }
 
 if (-not $env:DATABASE_URL) {
-  Write-Host "חסר DATABASE_URL ב-.env.netlify" -ForegroundColor Red
+  Write-Host "Missing DATABASE_URL in .env.netlify" -ForegroundColor Red
   exit 1
 }
 
-Write-Host "מגדיר משתני סביבה ב-Netlify..." -ForegroundColor Cyan
+Write-Host "Setting Netlify environment variables..." -ForegroundColor Cyan
 npx --yes netlify-cli@17 link --name dfusbb-home-inventory
-npx --yes netlify-cli@17 env:set DATABASE_URL $env:DATABASE_URL --context production --force
-npx --yes netlify-cli@17 env:set JWT_SECRET $env:JWT_SECRET --context production --force
-npx --yes netlify-cli@17 env:set ADMIN_FAMILY_NAME $env:ADMIN_FAMILY_NAME --context production --force
-npx --yes netlify-cli@17 env:set ADMIN_ADDRESS $env:ADMIN_ADDRESS --context production --force
-npx --yes netlify-cli@17 env:set ADMIN_CODE $env:ADMIN_CODE --context production --force
+npx --yes netlify-cli@17 env:set DATABASE_URL $env:DATABASE_URL --context all --force
+npx --yes netlify-cli@17 env:set JWT_SECRET $env:JWT_SECRET --context all --force
+npx --yes netlify-cli@17 env:set ADMIN_FAMILY_NAME $env:ADMIN_FAMILY_NAME --context all --force
+npx --yes netlify-cli@17 env:set ADMIN_ADDRESS $env:ADMIN_ADDRESS --context all --force
+npx --yes netlify-cli@17 env:set ADMIN_CODE $env:ADMIN_CODE --context all --force
 
-Write-Host "מפעיל פריסה..." -ForegroundColor Cyan
+Write-Host "Triggering production deploy..." -ForegroundColor Cyan
 npx --yes netlify-cli@17 deploy --prod --build
 
-Write-Host "סיום." -ForegroundColor Green
+Write-Host "Done." -ForegroundColor Green
